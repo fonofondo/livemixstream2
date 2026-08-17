@@ -59,7 +59,7 @@ void PluginProcessor::refreshHostInfo()
 
 void PluginProcessor::updateTrackProperties (const TrackProperties& properties)
 {
-    client.setTrackName (properties.name);
+    client.setTrackName (properties.name.value_or (juce::String{}));
 }
 
 void PluginProcessor::setupMasterRing()

@@ -8,9 +8,9 @@ PluginEditor::PluginEditor (PluginProcessor& p)
 {
     setSize (400, 180);
     title.setText ("AsaphOps", juce::dontSendNotification);
-    title.setFont (juce::Font (22.0f, juce::Font::bold));
+    title.setFont (juce::Font { juce::FontOptions (22.0f).withBold (true) });
     title.setColour (juce::Label::textColourId, juce::Colours::white);
-    hint.setFont (juce::Font (13.0f));
+    hint.setFont (juce::Font { juce::FontOptions (13.0f) });
     hint.setColour (juce::Label::textColourId, juce::Colours::grey);
     hint.setText ("Put this on the master bus. Track faders are in the companion Mixer tab.",
                   juce::dontSendNotification);
