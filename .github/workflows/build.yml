@@ -33,14 +33,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup CMake & Ninja
-        uses: lukka/get-cmake@v4
-
       - name: Linux Dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libjack-jackd2-dev \
+          sudo apt-get install -y cmake ninja-build libasound2-dev libjack-jackd2-dev \
             ladspa-sdk freeglut3-dev g++ libx11-dev libxcomposite-dev \
             libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
             libfreetype-dev libwebkit2gtk-4.1-dev libglu1-mesa-dev \
@@ -48,7 +45,7 @@ jobs:
 
       - name: macOS Dependencies
         if: runner.os == 'macOS'
-        run: brew install opus curl || true
+        run: brew install cmake ninja opus || true
 
       - name: Configure CMake
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -97,14 +94,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v5
 
-      - name: Setup CMake & Ninja
-        uses: lukka/get-cmake@v4
-
       - name: Linux Dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libjack-jackd2-dev \
+          sudo apt-get install -y cmake ninja-build libasound2-dev libjack-jackd2-dev \
             ladspa-sdk freeglut3-dev g++ libx11-dev libxcomposite-dev \
             libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
             libfreetype-dev libwebkit2gtk-4.1-dev libglu1-mesa-dev \
@@ -112,7 +106,7 @@ jobs:
 
       - name: macOS Dependencies
         if: runner.os == 'macOS'
-        run: brew install opus ninja || true
+        run: brew install cmake ninja opus || true
 
       - name: Configure AsaphOps CMake
         shell: bash
