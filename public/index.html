@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asaphix — Monitor</title>
+  <meta name="description" content="Listen live to real-time studio mix session directly from Digital Audio Workstation.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎧</text></svg>">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <div class="container">
+
+    <!-- Header Brand -->
+    <header class="brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+        </svg>
+      </div>
+      <h1 class="brand-title">Asaphix Monitor</h1>
+    </header>
+
+    <!-- Main Player Card -->
+    <main class="stream-card">
+
+      <!-- Session Title & Status Header -->
+      <div class="session-header">
+        <div class="session-title-group">
+          <span class="session-label">Session Code: <strong id="sessionIdDisplay">......</strong></span>
+          <h2 class="session-title" id="sessionTitleDisplay">Connecting...</h2>
+        </div>
+        <div id="statusBadge" class="status-badge connecting">
+          <span class="status-dot"></span>
+          <span id="statusText">CONNECTING</span>
+        </div>
+      </div>
+
+      <!-- Real-time Audio Visualizer Canvas -->
+      <div class="visualizer-container">
+        <canvas id="audioCanvas" id="canvasVisualizer"></canvas>
+      </div>
+
+      <!-- Main Play / Pause Interaction Controls -->
+      <div class="play-control-area">
+        <button id="playBtn" class="play-btn" aria-label="Toggle Playback">
+          <svg id="playIcon" viewBox="0 0 24 24">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+        </button>
+        <div id="playHint" class="play-hint">Click to listen live</div>
+      </div>
+
+      <!-- Volume & Mute Controls -->
+      <div class="volume-group">
+        <button id="muteBtn" class="mute-btn" aria-label="Mute Audio">
+          <svg id="volumeIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+          </svg>
+        </button>
+        <input type="range" id="volumeSlider" class="volume-slider" min="0" max="1" step="0.01" value="0.85" aria-label="Volume Slider">
+      </div>
+
+      <section class="hierarchy-panel" id="hierarchyPanel">
+        <div class="hierarchy-header">
+          <h3>Tracks</h3>
+          <span class="hierarchy-hint">Lit = full level · dim = ducked to the level set on that track’s plugin</span>
+        </div>
+        <div id="hierarchyTracks" class="track-grid"></div>
+      </section>
+
+      <!-- Configurable Latency Buffer Selector (0.5s to 3.0s) -->
+      <div class="latency-control-group">
+        <label for="latencySelect" class="latency-control-label">Target Buffer Latency</label>
+        <select id="latencySelect" class="latency-select">
+          <option value="0.5">0.5s (Ultra-Low / ~500ms)</option>
+          <option value="1.0" selected>1.0s (Standard / ~1000ms)</option>
+          <option value="1.5">1.5s (Balanced / ~1500ms)</option>
+          <option value="2.0">2.0s (High Buffer / ~2000ms)</option>
+          <option value="3.0">3.0s (Max Buffer / ~3000ms)</option>
+        </select>
+      </div>
+
+      <!-- Diagnostics Telemetry Grid -->
+      <div class="telemetry-grid">
+        <div class="metric-card">
+          <span class="metric-label">Format</span>
+          <span class="metric-value" id="specFormatDisplay">48k · Stereo</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Latency</span>
+          <span class="metric-value" id="specLatencyDisplay">~180 ms</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Bitrate</span>
+          <span class="metric-value" id="specBitrateDisplay">256 kbps</span>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Footer Information -->
+    <footer class="footer">
+      <p>Powered by LiveMixStream WebRTC Audio Transport · <a href="/transmitter.html" target="_blank" id="testBenchLink">Open Test Bench</a></p>
+    </footer>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/mediasoup-client@3/build/mediasoup-client.min.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

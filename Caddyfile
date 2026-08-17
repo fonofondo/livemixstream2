@@ -1,0 +1,14 @@
+livemixstream.com {
+    reverse_proxy localhost:3001 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up Connection {>Connection}
+        header_up Upgrade {>Upgrade}
+    }
+}
+
+# Notes:
+# - Caddy terminates HTTPS and upgrades WSS for signaling/HTTP.
+# - mediasoup RTP/RTCP uses host UDP ports 40000-40100 (not proxied by Caddy).
+# - Set MEDIASOUP_ANNOUNCED_IP to the VPS public IP.
+# - Optional TURN: configure ICE servers in the browser clients for strict NAT.

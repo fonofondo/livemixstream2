@@ -1,0 +1,6 @@
+data/*.sqlite
+data/*.sqlite-wal
+data/*.sqlite-shm
+node_modules/
+build/
+JUCE/

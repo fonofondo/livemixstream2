@@ -1,0 +1,34 @@
+{
+  "name": "asaphix",
+  "version": "1.0.0",
+  "description": "Asaphix live audio operations platform",
+  "main": "server/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node tests/hierarchy.test.js && node tests/sessions.test.js && node tests/leases.test.js && node tests/tenancy.test.js",
+    "test:simulator": "node simulator/transmitter-cli.js"
+  },
+  "keywords": [
+    "audio",
+    "webrtc",
+    "daw",
+    "vst3",
+    "audio-unit",
+    "streaming",
+    "sfu",
+    "juce",
+    "mediasoup"
+  ],
+  "author": "LiveMixStream Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.17.0",
+    "cors": "^2.8.5",
+    "uuid": "^9.0.1",
+    "mediasoup": "^3.14.16",
+    "mediasoup-client": "^3.7.17"
+  }
+}

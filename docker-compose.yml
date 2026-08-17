@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  livemixstream:
+    build: .
+    container_name: livemixstream_server
+    restart: always
+    ports:
+      - "3001:3001"
+      - "40000-40100:40000-40100/udp"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - LMS_ADMIN_PASSWORD=${LMS_ADMIN_PASSWORD:-admin}
+      - LMS_PLUGIN_TOKEN=${LMS_PLUGIN_TOKEN:-}
+      - MEDIASOUP_ANNOUNCED_IP=${MEDIASOUP_ANNOUNCED_IP:-127.0.0.1}
+      - MEDIASOUP_MIN_PORT=40000
+      - MEDIASOUP_MAX_PORT=40100
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

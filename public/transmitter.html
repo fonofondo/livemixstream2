@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveMixStream — Transmitter Studio Simulator</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .control-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .input-group label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .text-input, .select-input {
+      background: rgba(10, 14, 23, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .text-input:focus, .select-input:focus {
+      border-color: var(--primary);
+    }
+    .btn-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .action-btn {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+      color: #fff;
+      border: none;
+      padding: 14px;
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      box-shadow: 0 0 20px var(--primary-glow);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .action-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 30px rgba(99, 102, 241, 0.5);
+    }
+    .action-btn.secondary {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: none;
+    }
+    .action-btn.secondary:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .action-btn.danger {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+    }
+    .url-box {
+      background: rgba(10, 14, 23, 0.9);
+      border: 1px dashed var(--primary);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .url-text {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: var(--accent-cyan);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .copy-btn {
+      background: var(--primary);
+      border: none;
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+
+    <header class="brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+      </div>
+      <h1 class="brand-title">DAW Transmitter Test Bench</h1>
+    </header>
+
+    <main class="stream-card">
+      <div class="session-header">
+        <div class="session-title-group">
+          <span class="session-label">Transmitter Control Panel</span>
+          <h2 class="session-title" id="statusHeader">Ready to Stream</h2>
+        </div>
+        <div id="txStatusBadge" class="status-badge disconnected">
+          <span class="status-dot"></span>
+          <span id="txStatusText">OFFLINE</span>
+        </div>
+      </div>
+
+      <div class="control-panel">
+        <div class="input-group">
+          <label>Session Title</label>
+          <input type="text" id="sessionTitleInput" class="text-input" value="Mastering Mix Room - Demo">
+        </div>
+
+        <div class="input-group">
+          <label>Audio Test Source</label>
+          <select id="audioSourceSelect" class="select-input">
+            <option value="synth">440Hz / 880Hz Stereo Test Synth</option>
+            <option value="mic">Live Microphone Input</option>
+          </select>
+        </div>
+
+        <div class="input-group">
+          <label>Quality Target</label>
+          <select id="qualitySelect" class="select-input">
+            <option value="High">High Quality (48 kHz / 256 kbps)</option>
+            <option value="Efficient">Internet Efficient (44.1 kHz / 128 kbps)</option>
+          </select>
+        </div>
+
+        <div id="sessionUrlArea" style="display: none;">
+          <div class="input-group">
+            <label>Shareable Listener URL (FR-011)</label>
+            <div class="url-box">
+              <span id="listenerUrlText" class="url-text">https://livemixstream.com/s/7F3K9P</span>
+              <button id="copyUrlBtn" class="copy-btn">COPY LINK</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="btn-group">
+          <button id="startStreamBtn" class="action-btn">CREATE & STREAM</button>
+          <button id="stopStreamBtn" class="action-btn danger" style="display: none;">STOP STREAM</button>
+          <a id="openListenerBtn" href="#" target="_blank" class="action-btn secondary" style="text-align: center; text-decoration: none;">OPEN LISTENER</a>
+        </div>
+      </div>
+
+      <div class="telemetry-grid">
+        <div class="metric-card">
+          <span class="metric-label">Listeners</span>
+          <span class="metric-value" id="txListenerCount">0</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Packets</span>
+          <span class="metric-value" id="txPacketCount">0</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Sent Data</span>
+          <span class="metric-value" id="txDataSent">0 MB</span>
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <script>
+    let ws = null;
+    let audioCtx = null;
+    let mediaStream = null;
+    let scriptNode = null;
+    let sessionData = null;
+    let packetCounter = 0;
+    let bytesCounter = 0;
+    let synthPhase = 0;
+
+    const startBtn = document.getElementById('startStreamBtn');
+    const stopBtn = document.getElementById('stopStreamBtn');
+    const sessionTitleInput = document.getElementById('sessionTitleInput');
+    const audioSourceSelect = document.getElementById('audioSourceSelect');
+    const qualitySelect = document.getElementById('qualitySelect');
+    const sessionUrlArea = document.getElementById('sessionUrlArea');
+    const listenerUrlText = document.getElementById('listenerUrlText');
+    const copyUrlBtn = document.getElementById('copyUrlBtn');
+    const openListenerBtn = document.getElementById('openListenerBtn');
+    const txStatusBadge = document.getElementById('txStatusBadge');
+    const txStatusText = document.getElementById('txStatusText');
+    const statusHeader = document.getElementById('statusHeader');
+    const txListenerCount = document.getElementById('txListenerCount');
+    const txPacketCount = document.getElementById('txPacketCount');
+    const txDataSent = document.getElementById('txDataSent');
+
+    startBtn.addEventListener('click', async () => {
+      try {
+        const title = sessionTitleInput.value.trim();
+        const quality = qualitySelect.value;
+        const sampleRate = quality === 'High' ? 48000 : 44100;
+
+        const res = await fetch('/api/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, quality, sampleRate, channels: 2 })
+        });
+
+        sessionData = await res.json();
+        if (!sessionData.success) alert('Failed to create session');
+
+        listenerUrlText.textContent = sessionData.listenerUrl;
+        openListenerBtn.href = `/s/${sessionData.sessionId}`;
+        sessionUrlArea.style.display = 'block';
+        startBtn.style.display = 'none';
+        stopBtn.style.display = 'block';
+
+        statusHeader.textContent = `Streaming Session ${sessionData.sessionId}`;
+        txStatusBadge.className = 'status-badge live';
+        txStatusText.textContent = '● LIVE';
+
+        // Connect WebSocket
+        ws = new WebSocket(sessionData.wsUrl);
+        ws.binaryType = 'arraybuffer';
+
+        ws.onopen = () => {
+          startAudioEngine(sessionData.config.sampleRate);
+        };
+
+        ws.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'LISTENER_COUNT') {
+              txListenerCount.textContent = msg.count;
+            } else if (msg.type === 'TELEMETRY') {
+              txListenerCount.textContent = msg.listeners;
+            }
+          } catch(err) {}
+        };
+
+      } catch (err) {
+        alert('Error starting transmitter: ' + err.message);
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      stopAudioEngine();
+      if (ws) ws.close();
+      startBtn.style.display = 'block';
+      stopBtn.style.display = 'none';
+      txStatusBadge.className = 'status-badge disconnected';
+      txStatusText.textContent = 'OFFLINE';
+      statusHeader.textContent = 'Ready to Stream';
+    });
+
+    copyUrlBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(listenerUrlText.textContent);
+      copyUrlBtn.textContent = 'COPIED!';
+      setTimeout(() => copyUrlBtn.textContent = 'COPY LINK', 2000);
+    });
+
+    function startAudioEngine(sampleRate) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AudioCtx({ sampleRate });
+
+      const bufferSize = 1024;
+      scriptNode = audioCtx.createScriptProcessor(bufferSize, 2, 2);
+
+      const sourceType = audioSourceSelect.value;
+
+      if (sourceType === 'mic') {
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+          mediaStream = stream;
+          const micSource = audioCtx.createMediaStreamSource(stream);
+          micSource.connect(scriptNode);
+          scriptNode.connect(audioCtx.destination);
+        });
+      } else {
+        // Generate Synth Test Tone (440Hz L, 880Hz R)
+        scriptNode.onaudioprocess = (e) => {
+          const left = e.outputBuffer.getChannelData(0);
+          const right = e.outputBuffer.getChannelData(1);
+          
+          for (let i = 0; i < bufferSize; i++) {
+            synthPhase += 1;
+            left[i] = Math.sin(2 * Math.PI * 440 * (synthPhase / sampleRate)) * 0.4;
+            right[i] = Math.sin(2 * Math.PI * 880 * (synthPhase / sampleRate)) * 0.3;
+          }
+
+          sendAudioBuffer(left, right);
+        };
+        scriptNode.connect(audioCtx.destination);
+      }
+
+      if (sourceType === 'mic') {
+        scriptNode.onaudioprocess = (e) => {
+          const left = e.inputBuffer.getChannelData(0);
+          const right = e.inputBuffer.getChannelData(1);
+          sendAudioBuffer(left, right);
+        };
+      }
+    }
+
+    function sendAudioBuffer(leftChannel, rightChannel) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+      const pcmData = new Float32Array(leftChannel.length + rightChannel.length);
+      for (let i = 0; i < leftChannel.length; i++) {
+        pcmData[i * 2] = leftChannel[i];
+        pcmData[i * 2 + 1] = rightChannel[i];
+      }
+
+      ws.send(pcmData.buffer);
+      packetCounter++;
+      bytesCounter += pcmData.byteLength;
+
+      txPacketCount.textContent = packetCounter;
+      txDataSent.textContent = (bytesCounter / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    function stopAudioEngine() {
+      if (scriptNode) scriptNode.disconnect();
+      if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+      if (audioCtx) audioCtx.close();
+    }
+  </script>
+</body>
+</html>

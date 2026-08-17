@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveMixStream — Admin</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .admin-container { width: 100%; max-width: 1100px; display: flex; flex-direction: column; gap: 20px; }
+    .admin-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .global-stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+    .stat-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius-md); padding: 16px; }
+    .stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+    .stat-value { font-size: 1.5rem; font-weight: 700; margin-top: 4px; }
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+    .tab { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--card-border); background: transparent; color: var(--text-muted); cursor: pointer; }
+    .tab.active { background: #6366f1; color: white; border-color: #6366f1; }
+    .panel { display: none; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius-lg); padding: 16px; }
+    .panel.active { display: block; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    th { color: var(--text-muted); font-weight: 600; }
+    .btn { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--card-border); background: rgba(255,255,255,0.04); color: var(--text-main); cursor: pointer; font-size: 0.75rem; }
+    .btn.danger { border-color: #ef4444; color: #fca5a5; }
+    .login-card { max-width: 360px; margin: 80px auto; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 12px; }
+    input[type=password], input[type=search], input[type=text] {
+      width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--card-border);
+      background: rgba(0,0,0,0.25); color: var(--text-main);
+    }
+    #dashboard { display: none; }
+    #loginView { display: block; }
+  </style>
+</head>
+<body>
+  <div id="loginView" class="login-card">
+    <h1 style="margin:0;font-size:1.4rem">Admin Login</h1>
+    <p style="margin:0;color:var(--text-muted);font-size:0.85rem">Default password: <code>admin</code> (set LMS_ADMIN_PASSWORD)</p>
+    <input id="adminPassword" type="password" placeholder="Password" />
+    <button id="loginBtn" class="btn" style="padding:12px">Sign in</button>
+    <div id="loginError" style="color:#f87171;font-size:0.85rem"></div>
+  </div>
+
+  <div id="dashboard" class="container admin-container">
+    <header class="admin-header">
+      <h1 style="margin:0">LiveMixStream Admin</h1>
+      <div style="display:flex;gap:8px">
+        <button id="refreshBtn" class="btn">Refresh</button>
+        <button id="logoutBtn" class="btn danger">Logout</button>
+      </div>
+    </header>
+
+    <div class="global-stats-row">
+      <div class="stat-card"><div class="stat-label">Streams</div><div class="stat-value" id="statStreams">0</div></div>
+      <div class="stat-card"><div class="stat-label">Listeners</div><div class="stat-value" id="statListeners">0</div></div>
+      <div class="stat-card"><div class="stat-label">Instances</div><div class="stat-value" id="statInstances">0</div></div>
+      <div class="stat-card"><div class="stat-label">Groups</div><div class="stat-value" id="statGroups">0</div></div>
+      <div class="stat-card"><div class="stat-label">Outbound</div><div class="stat-value" id="statTraffic">0 MB</div></div>
+      <div class="stat-card"><div class="stat-label">Heap</div><div class="stat-value" id="statHeap">0 MB</div></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="streams">Streams</button>
+      <button class="tab" data-tab="instances">Instances</button>
+      <button class="tab" data-tab="hierarchy">Hierarchy</button>
+      <button class="tab" data-tab="audit">Audit</button>
+    </div>
+
+    <section id="panel-streams" class="panel active">
+      <table><thead><tr><th>Session</th><th>Title</th><th>Status</th><th>Listeners</th><th>Bitrate</th><th>Actions</th></tr></thead>
+      <tbody id="streamsBody"></tbody></table>
+      <div id="listenBox" style="margin-top:16px;display:none">
+        <h3 id="listenTitle">Listening</h3>
+        <audio id="adminAudio" controls autoplay style="width:100%"></audio>
+        <button id="stopListenBtn" class="btn" style="margin-top:8px">Stop</button>
+      </div>
+    </section>
+
+    <section id="panel-instances" class="panel">
+      <input id="instanceSearch" type="search" placeholder="Search instances..." style="margin-bottom:12px" />
+      <table><thead><tr><th>Track</th><th>Instance</th><th>Mode</th><th>Session</th><th>Group</th><th>Role</th><th>Status</th><th>OS</th><th>Actions</th></tr></thead>
+      <tbody id="instancesBody"></tbody></table>
+    </section>
+
+    <section id="panel-hierarchy" class="panel">
+      <div id="adminHierarchy"></div>
+    </section>
+
+    <section id="panel-audit" class="panel">
+      <table><thead><tr><th>Time</th><th>Admin</th><th>Action</th><th>Target</th><th>Result</th></tr></thead>
+      <tbody id="auditBody"></tbody></table>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/mediasoup-client@3/build/mediasoup-client.min.js"></script>
+  <script src="/js/admin.js"></script>
+</body>
+</html>
