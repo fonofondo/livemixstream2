@@ -45,7 +45,10 @@ jobs:
 
       - name: macOS Dependencies
         if: runner.os == 'macOS'
-        run: brew install cmake ninja opus || true
+        run: |
+          brew install cmake ninja opus pkg-config || true
+          echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig:$(brew --prefix opus)/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=$(brew --prefix)/lib:$(brew --prefix opus)/lib" >> "$GITHUB_ENV"
 
       - name: Configure CMake
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -106,7 +109,10 @@ jobs:
 
       - name: macOS Dependencies
         if: runner.os == 'macOS'
-        run: brew install cmake ninja opus || true
+        run: |
+          brew install cmake ninja opus pkg-config || true
+          echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig:$(brew --prefix opus)/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=$(brew --prefix)/lib:$(brew --prefix opus)/lib" >> "$GITHUB_ENV"
 
       - name: Configure AsaphOps CMake
         shell: bash
