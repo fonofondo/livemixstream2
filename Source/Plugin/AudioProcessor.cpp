@@ -185,8 +185,8 @@ void LiveMixStreamAudioProcessor::setStateInformation (const void* data, int siz
 
 void LiveMixStreamAudioProcessor::updateTrackProperties (const TrackProperties& properties)
 {
-    if (properties.name.isNotEmpty())
-        setTrackName(properties.name.toStdString(), NameSource::Host);
+    if (properties.name.has_value() && properties.name->isNotEmpty())
+        setTrackName (properties.name->toStdString(), NameSource::Host);
 }
 
 void LiveMixStreamAudioProcessor::setMode (PluginMode mode)
