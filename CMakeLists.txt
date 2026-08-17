@@ -47,7 +47,7 @@ target_sources(LiveMixStream PRIVATE
     Source/UI/PluginEditor.cpp
 )
 
-find_package(CURL REQUIRED)
+find_package(CURL)
 find_package(PkgConfig QUIET)
 set(LMS_HAS_OPUS 0)
 if(PkgConfig_FOUND)
@@ -66,9 +66,16 @@ if(NOT LMS_HAS_OPUS)
     endif()
 endif()
 
+if(CURL_FOUND)
+    set(LMS_USE_CURL 1)
+else()
+    set(LMS_USE_CURL 0)
+    message(WARNING "CURL not found — using JUCE native HTTP (WinHTTP on Windows)")
+endif()
+
 target_compile_definitions(LiveMixStream PRIVATE
     JUCE_WEB_BROWSER=0
-    JUCE_USE_CURL=1
+    JUCE_USE_CURL=${LMS_USE_CURL}
     JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
@@ -76,8 +83,10 @@ target_link_libraries(LiveMixStream PRIVATE
     juce::juce_audio_utils
     juce::juce_audio_processors
     juce::juce_gui_basics
-    CURL::libcurl
 )
+if(CURL_FOUND)
+    target_link_libraries(LiveMixStream PRIVATE CURL::libcurl)
+endif()
 
 if(LMS_HAS_OPUS)
     target_include_directories(LiveMixStream PRIVATE ${OPUS_INCLUDE_DIRS})

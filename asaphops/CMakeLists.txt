@@ -33,11 +33,19 @@ set(ASAPHOPS_SHARED_SOURCES
     src/shared/SharedMemoryFifo.cpp
 )
 
+if(WIN32)
+    set(_asaphops_needs_curl FALSE)
+    set(_asaphops_use_curl 0)
+else()
+    set(_asaphops_needs_curl TRUE)
+    set(_asaphops_use_curl 1)
+endif()
+
 juce_add_gui_app(AsaphOpsCompanion
     COMPANY_NAME "AsaphOps"
     BUNDLE_ID "com.asaphops.companion"
     PRODUCT_NAME "AsaphOps"
-    NEEDS_CURL TRUE
+    NEEDS_CURL ${_asaphops_needs_curl}
     HARDENED_RUNTIME_ENABLED FALSE
     DOCUMENT_EXTENSIONS ""
 )
@@ -69,7 +77,7 @@ endif()
 
 target_compile_definitions(AsaphOpsCompanion PRIVATE
     JUCE_WEB_BROWSER=0
-    JUCE_USE_CURL=1
+    JUCE_USE_CURL=${_asaphops_use_curl}
     JUCE_ALSA=${_asaphops_alsa}
     JUCE_JACK=0
     JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:AsaphOpsCompanion,JUCE_PRODUCT_NAME>"
