@@ -8,7 +8,7 @@ PluginEditor::PluginEditor (PluginProcessor& p)
 {
     setSize (400, 180);
     title.setText ("AsaphOps", juce::dontSendNotification);
-    title.setFont (juce::Font { juce::FontOptions (22.0f).withBold (true) });
+    title.setFont (juce::Font { juce::FontOptions (22.0f, juce::Font::bold) });
     title.setColour (juce::Label::textColourId, juce::Colours::white);
     hint.setFont (juce::Font { juce::FontOptions (13.0f) });
     hint.setColour (juce::Label::textColourId, juce::Colours::grey);
