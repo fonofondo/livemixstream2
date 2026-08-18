@@ -22,7 +22,7 @@ Endpoints stay empty until a companion signs in. Then open **Endpoints**, select
 
 ## Companion and plugin
 
-Independent CMake project under `asaphops/` (the old LiveMixStream plugin at the repo root is not built on CI).
+Independent CMake project under `asaphops/`.
 
 ```bash
 cd asaphops

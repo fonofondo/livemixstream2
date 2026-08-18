@@ -4,8 +4,14 @@ on:
   workflow_dispatch:
   push:
     branches: [ main, master ]
+    paths:
+      - 'asaphops/**'
+      - '.github/workflows/build.yml'
   pull_request:
     branches: [ main, master ]
+    paths:
+      - 'asaphops/**'
+      - '.github/workflows/build.yml'
 
 concurrency:
   group: asaphops-macos-${{ github.workflow }}-${{ github.ref }}
@@ -22,8 +28,12 @@ jobs:
     timeout-minutes: 90
 
     steps:
-      - name: Checkout
+      - name: Checkout AsaphOps
         uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            asaphops
+            .github
 
       - name: Install ninja, opus, pkg-config
         run: |
