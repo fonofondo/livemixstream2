@@ -2,6 +2,7 @@
 
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
+#include <functional>
 #include <memory>
 #include "../../shared/Paths.h"
 #include "LiveConnection.h"
@@ -47,6 +48,8 @@ public:
     bool goOffline();
     void startLive();
     void stopLive();
+    void sendLiveLine (const juce::String& line);
+    void setLiveLineHandler (std::function<void (juce::String)> handler);
 
 private:
     juce::var postJson (const juce::String& path, const juce::var& body, int* statusOut = nullptr);
@@ -58,6 +61,7 @@ private:
     juce::String lastDebug;
     mutable juce::CriticalSection lock;
     std::unique_ptr<LiveConnection> live;
+    std::function<void (juce::String)> liveLineHandler;
 };
 
 } // namespace AsaphOps

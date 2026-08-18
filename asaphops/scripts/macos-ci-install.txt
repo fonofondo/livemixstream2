@@ -1,0 +1,20 @@
+AsaphOps macOS (universal arm64 + x86_64), ad-hoc signed — no Apple Developer ID.
+
+Companion:
+  unzip AsaphOps-macOS-Companion.zip -d /Applications
+  xattr -cr /Applications/AsaphOps.app
+  open /Applications/AsaphOps.app
+
+VST3 (Reaper, etc.):
+  unzip AsaphOps-macOS-VST3.zip -d ~/Library/Audio/Plug-Ins/VST3
+  xattr -cr ~/Library/Audio/Plug-Ins/VST3/AsaphOps.vst3
+
+AU:
+  unzip AsaphOps-macOS-AU.zip -d ~/Library/Audio/Plug-Ins/Components
+  xattr -cr ~/Library/Audio/Plug-Ins/Components/AsaphOps.component
+
+If Gatekeeper blocks: System Settings → Privacy & Security → Open Anyway.
+
+MIDI: in the DAW add Mackie Control Universal on "AsaphOps MCU", then three
+Mackie Control Extenders on "AsaphOps XT1", "AsaphOps XT2", "AsaphOps XT3".
+Mixer logic is in the AsaphOps web app, not in this binary.

@@ -22,7 +22,7 @@ Endpoints stay empty until a companion signs in. Then open **Endpoints**, select
 
 ## Companion and plugin
 
-Independent CMake project (does not replace the LiveMixStream plugin at the repo root).
+Independent CMake project under `asaphops/` (the old LiveMixStream plugin at the repo root is not built on CI).
 
 ```bash
 cd asaphops
@@ -32,21 +32,33 @@ cmake --build build --config Release
 
 Linux packages typically needed: ALSA/JACK, X11, FreeType, curl, and the usual JUCE GUI deps.
 
-macOS VST3 is built on GitHub Actions (`macos-latest`), ad-hoc signed, no Apple Developer account. Run the workflow **LiveMixStream CI/CD Build Pipeline** (push to main/master, PR, or **Run workflow**), then download the **AsaphOps-macOS** artifact.
+macOS companion + VST3 + AU (universal arm64/x86_64) build on GitHub Actions. Push to `main`/`master`, open a PR, or **Actions → AsaphOps macOS → Run workflow**. Download the **AsaphOps-macOS** artifact (no Apple Developer account; ad-hoc signed only).
 
 On the Mac:
 
 ```bash
+unzip AsaphOps-macOS-Companion.zip -d /Applications
+xattr -cr /Applications/AsaphOps.app
+open /Applications/AsaphOps.app
+
 unzip AsaphOps-macOS-VST3.zip -d ~/Library/Audio/Plug-Ins/VST3
 xattr -cr ~/Library/Audio/Plug-Ins/VST3/AsaphOps.vst3
+
+unzip AsaphOps-macOS-AU.zip -d ~/Library/Audio/Plug-Ins/Components
+xattr -cr ~/Library/Audio/Plug-Ins/Components/AsaphOps.component
 ```
 
 If Gatekeeper blocks it: Privacy & Security → Open Anyway. Notarization is not used.
 
+In the DAW, add **Mackie Control Universal** on `AsaphOps MCU` and three **Mackie Control Extenders** on `AsaphOps XT1`, `XT2`, `XT3`.
+
+Local Mac build: `asaphops/scripts/build-macos.sh`
+
 Outputs (paths vary slightly by generator):
 
-- Companion: `build/AsaphOpsCompanion_artefacts/AsaphOps`
-- Plugin: `build/AsaphOpsPlugin_artefacts/VST3/AsaphOps.vst3`
+- Companion (macOS): `build/AsaphOpsCompanion_artefacts/Release/AsaphOps.app`
+- Companion (Linux): `build/AsaphOpsCompanion_artefacts/Release/AsaphOps`
+- Plugin: `build/AsaphOpsPlugin_artefacts/Release/VST3/AsaphOps.vst3`
 
 On Linux the companion is a normal window (no system tray). JUCE’s X11 tray dock can crash the desktop session.
 

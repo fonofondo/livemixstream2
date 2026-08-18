@@ -127,6 +127,7 @@ h1 { margin: 0 0 6px; font-size: 1.35rem; font-weight: 600; }
   padding: 8px 12px;
 }
 .btn.primary { background: var(--accent); color: #1a140c; border-color: var(--accent); font-weight: 600; }
+.btn.on { border-color: var(--accent); color: var(--accent); }
 .btn.danger { border-color: #7a3d3d; color: #f0b4b4; }
 .btn.block { width: 100%; text-align: center; }
 
@@ -262,6 +263,178 @@ th { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-
   text-overflow: ellipsis;
 }
 .cal-ev:hover { background: rgba(196, 165, 116, 0.28); }
+
+.mixer-card { overflow: hidden; }
+.mixer-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.mixer-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.mixer-board {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 8px 4px 12px;
+  min-height: 380px;
+  align-items: stretch;
+}
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.mixer-scan[hidden] { display: none; }
+.mixer-scan-spin {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: mixer-spin 0.8s linear infinite;
+}
+.mixer-scan-label { margin: 0; font-size: 0.82rem; color: var(--muted); }
+@keyframes mixer-spin { to { transform: rotate(360deg); } }
+.mixer-page {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 8px 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  opacity: 0.55;
+}
+.mixer-page.is-live {
+  opacity: 1;
+  border-color: var(--accent);
+}
+.mixer-page-label {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 0 4px;
+  cursor: pointer;
+}
+.mixer-page.is-live .mixer-page-label { color: var(--accent); }
+.mixer-page-strips {
+  display: flex;
+  gap: 10px;
+}
+.mixer-strip.is-view .mixer-fader { pointer-events: none; }
+.mixer-view-tag {
+  font-size: 0.62rem;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.mixer-strip {
+  flex: 0 0 72px;
+  width: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.mixer-name {
+  height: 2.6em;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.2;
+  overflow: hidden;
+}
+.mixer-btns {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+}
+.mixer-rec,
+.mixer-listen {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.mixer-rec.armed {
+  color: #1a0a0a;
+  background: #d46767;
+  border-color: #d46767;
+}
+.mixer-listen.on {
+  color: #0a1a12;
+  background: #6ec89a;
+  border-color: #6ec89a;
+}
+.mixer-db { font-size: 0.72rem; color: var(--muted); }
+.mixer-fader-well {
+  width: 28px;
+  height: 280px;
+  overflow: hidden;
+  touch-action: none;
+  flex: 0 0 auto;
+}
+.mixer-fader {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  appearance: none;
+  width: 28px;
+  height: 280px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0;
+  touch-action: none;
+}
+.mixer-fader::-webkit-slider-thumb {
+  appearance: none;
+  width: 22px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+.mixer-fader::-moz-range-thumb {
+  width: 22px;
+  height: 10px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.mixer-debug[hidden] { display: none; }
+.mixer-debug h2 { margin-bottom: 8px; }
+.mixer-debug-log {
+  margin: 10px 0 0;
+  padding: 12px;
+  max-height: 280px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre;
+  color: #c8d0dc;
+}
 
 @media (max-width: 640px) {
   .app { grid-template-columns: 1fr; }

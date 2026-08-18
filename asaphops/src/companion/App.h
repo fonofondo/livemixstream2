@@ -6,13 +6,14 @@
 #include "Network/OpsClient.h"
 #include "IPCServer/IPCServer.h"
 #include "Media/MediaEngine.h"
-#include "Mackie/MackieSurface.h"
+#include "Midi/MidiPassthrough.h"
 #include "UI/MainWindow.h"
 #include "UI/TrayIcon.h"
 
 namespace AsaphOps {
 
-class CompanionApp : public juce::JUCEApplication
+class CompanionApp : public juce::JUCEApplication,
+                     private juce::ChangeListener
 {
 public:
     const juce::String getApplicationName() override { return "AsaphOps"; }
@@ -30,16 +31,19 @@ public:
     SessionManager& getSessions() { return sessions; }
     OpsClient& getOps() { return *ops; }
     MediaEngine& getMedia() { return *media; }
-    MackieSurface& getMackie() { return *mackie; }
+    MidiPassthrough& getMidi() { return *midi; }
 
 private:
+    void changeListenerCallback (juce::ChangeBroadcaster*) override;
+    void pushPortStatus();
+
     std::unique_ptr<juce::InterProcessLock> instanceLock;
     std::unique_ptr<juce::FileLogger> logger;
     ProjectRegistry registry;
     SessionManager sessions;
     std::unique_ptr<OpsClient> ops;
     std::unique_ptr<MediaEngine> media;
-    std::unique_ptr<MackieSurface> mackie;
+    std::unique_ptr<MidiPassthrough> midi;
     std::unique_ptr<IPCServer> ipc;
     std::unique_ptr<MainWindow> window;
     std::unique_ptr<TrayIcon> tray;

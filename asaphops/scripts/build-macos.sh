@@ -25,7 +25,8 @@ fi
 cmake -B "$BUILD_DIR" \
   "${GEN_ARGS[@]}" \
   -DCMAKE_BUILD_TYPE="$CONFIG" \
-  -DCMAKE_OSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-10.13}" \
+  -DCMAKE_OSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-10.15}" \
+  -DASAPHOPS_COPY_PLUGIN="${ASAPHOPS_COPY_PLUGIN:-ON}" \
   -DCMAKE_OSX_ARCHITECTURES="${CMAKE_OSX_ARCHITECTURES:-arm64;x86_64}" \
   -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY="-" \
   -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=""
@@ -65,7 +66,14 @@ if [[ -n "$AU" && -d "$AU" ]]; then
 fi
 
 echo
-echo "Load in Reaper: scan VST3. If macOS blocks it:"
+if [[ -n "$APP" && -d "$APP" ]]; then
+  echo "Companion app: $APP"
+  echo "  Copy to /Applications if you want it in Launchpad."
+fi
+
+echo
+echo "Load in Reaper: scan VST3. MIDI ports: AsaphOps MCU, XT1, XT2, XT3."
+echo "If macOS blocks it:"
 echo "  System Settings → Privacy & Security → Open Anyway"
 echo "  or:  xattr -cr ~/Library/Audio/Plug-Ins/VST3/AsaphOps.vst3"
 echo

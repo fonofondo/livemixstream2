@@ -1,0 +1,12 @@
+# Backup of the old LiveMixStream plugin + server-test CI.
+# GitHub does not run *.yml.disabled. Rename to .yml to restore.
+#
+# name: LiveMixStream CI/CD Build Pipeline
+#
+# jobs:
+#   test-server: ubuntu npm ci / npm test (repo root)
+#   build-plugin: cmake -B build (LiveMixStream VST3/AU/Standalone) on
+#                 ubuntu-latest, macos-latest, windows-latest
+#
+# The last active copy lived in build.yml before AsaphOps-only CI.
+# LiveMixStream sources remain in the repo (CMakeLists.txt, Source/).

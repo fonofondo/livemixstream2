@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const path = require('path');
 const express = require('express');
 const { open, seed, hashPassword, verifyPassword } = require('./db');
+const { MackieControl, fromHex, toHex } = require('./mcu');
 
 const PORT = Number(process.env.PORT || 3100);
 const DB_PATH = process.env.ASAPHOPS_DB || path.join(__dirname, 'data/asaphops.sqlite');
@@ -551,6 +552,75 @@ function listEndpoints() {
   `).all().map(decorateEndpoint);
 }
 
+function liveByEndpointId(endpointId) {
+  for (const c of liveCompanions.values()) {
+    if (c.endpointId === endpointId) return c;
+  }
+  return null;
+}
+
+function writeLive(companion, text) {
+  if (!companion || !companion.socket || companion.socket.destroyed) return false;
+  try {
+    companion.socket.write(text);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function mixerPayload(endpointId, live) {
+  const connected = Boolean(live);
+  const snap = live && live.mcu ? live.mcu.snapshot() : { tracks: [], linked: false, status: '' };
+  const port = (live && live.port) || {};
+  return {
+    type: 'mixer',
+    endpointId,
+    connected,
+    linked: Boolean(snap.linked),
+    portsOpen: Boolean(port.portsOpen),
+    status: snap.status || port.status || '',
+    hint: port.hint || '',
+    tracks: Array.isArray(snap.tracks) ? snap.tracks : [],
+    pages: Array.isArray(snap.pages) ? snap.pages : [],
+    scanning: Boolean(snap.scanning),
+    scanLabel: snap.scanLabel || '',
+    pageIndex: snap.pageIndex || 0,
+    pageCount: snap.pageCount || 0,
+    debug: snap.debug || null
+  };
+}
+
+function broadcastMixer(endpointId) {
+  const live = liveByEndpointId(endpointId);
+  const payload = `event: mixer\ndata: ${JSON.stringify(mixerPayload(endpointId, live))}\n\n`;
+  for (const res of sseClients) {
+    try { res.write(payload); } catch (_) {}
+  }
+}
+
+function attachMackie(companion) {
+  if (companion.mcu) companion.mcu.stop();
+  companion.mcu = new MackieControl((surface, bytes) => {
+    writeLive(companion, `MIDI ${surface | 0} ${toHex(bytes)}\n`);
+  });
+  let mixerTimer = null;
+  companion.mcu.onChange = () => {
+    if (mixerTimer) return;
+    mixerTimer = setTimeout(() => {
+      mixerTimer = null;
+      broadcastMixer(companion.endpointId);
+    }, 40);
+  };
+  companion.stopMixerTimer = () => {
+    if (mixerTimer) {
+      clearTimeout(mixerTimer);
+      mixerTimer = null;
+    }
+  };
+  companion.mcu.start();
+}
+
 function persistConnection(endpoint, connected) {
   const status = assignedStatus(endpoint, connected);
   if (connected) {
@@ -584,7 +654,7 @@ function attachLiveCompanion(socket, actor, leftover) {
   let buf = leftover || '';
   let machineId = null;
   let pingTimer = null;
-  let awaitingPong = false;
+  let awaitingPong = 0;
   let helloTimer = setTimeout(() => socket.destroy(), 8000);
 
   const cleanup = () => {
@@ -595,25 +665,32 @@ function attachLiveCompanion(socket, actor, leftover) {
       if (cur && cur.socket === socket) {
         liveCompanions.delete(machineId);
         const endpoint = db.prepare('SELECT * FROM endpoints WHERE machine_id = ?').get(machineId);
+        if (cur.mcu) cur.mcu.stop();
+        if (typeof cur.stopMixerTimer === 'function') cur.stopMixerTimer();
         if (endpoint) {
           persistConnection(endpoint, false);
           broadcastEndpoints();
+          broadcastMixer(endpoint.id);
         }
       }
     }
   };
 
-  const startPinging = () => {
+    const startPinging = () => {
     const ping = () => {
       if (socket.destroyed) return;
       if (awaitingPong) {
-        socket.destroy();
-        return;
+        awaitingPong += 1;
+        if (awaitingPong > 3) {
+          socket.destroy();
+          return;
+        }
+      } else {
+        awaitingPong = 1;
       }
-      awaitingPong = true;
       try { socket.write('PING\n'); } catch (_) { socket.destroy(); }
     };
-    pingTimer = setInterval(ping, 5000);
+    pingTimer = setInterval(ping, 8000);
     ping();
   };
 
@@ -635,10 +712,14 @@ function attachLiveCompanion(socket, actor, leftover) {
         return;
       }
       const prev = liveCompanions.get(machineId);
-      liveCompanions.set(machineId, { socket, endpointId: endpoint.id, personId: actor.person_id });
+      const companion = { socket, endpointId: endpoint.id, personId: actor.person_id, port: null, mcu: null };
+      liveCompanions.set(machineId, companion);
       if (prev && prev.socket !== socket) {
+        if (prev.mcu) prev.mcu.stop();
+        if (typeof prev.stopMixerTimer === 'function') prev.stopMixerTimer();
         try { prev.socket.destroy(); } catch (_) {}
       }
+      attachMackie(companion);
       db.prepare('UPDATE endpoints SET person_id = ? WHERE id = ?').run(actor.person_id, endpoint.id);
       persistConnection(endpoint, true);
       broadcastEndpoints();
@@ -646,7 +727,39 @@ function attachLiveCompanion(socket, actor, leftover) {
       startPinging();
       return;
     }
-    if (line === 'PONG') awaitingPong = false;
+    if (line === 'PONG') {
+      awaitingPong = 0;
+      return;
+    }
+    if (line.startsWith('MIDI ')) {
+      awaitingPong = 0;
+      const cur = liveCompanions.get(machineId);
+      if (!cur || !cur.mcu) return;
+      let rest = line.slice(5).trim();
+      let surface = 0;
+      const tagged = rest.match(/^([0-3])\s+(.+)$/);
+      if (tagged) {
+        surface = Number(tagged[1]);
+        rest = tagged[2];
+      }
+      const bytes = fromHex(rest);
+      if (bytes) {
+        try { cur.mcu.handle(surface, bytes); }
+        catch (err) { console.error('mcu handle failed', err); }
+      }
+      return;
+    }
+    if (line.startsWith('PORT ')) {
+      awaitingPong = 0;
+      const cur = liveCompanions.get(machineId);
+      if (!cur) return;
+      try {
+        cur.port = JSON.parse(line.slice(5));
+      } catch (_) {
+        return;
+      }
+      broadcastMixer(cur.endpointId);
+    }
   };
 
   const drain = () => {
@@ -697,6 +810,108 @@ app.get('/api/endpoints/:id', requireAuth, (req, res) => {
   const endpoint = endpointRow(req.params.id);
   if (!endpoint) return res.status(404).json({ ok: false, error: 'Not found' });
   res.json({ ok: true, endpoint });
+});
+
+app.get('/api/endpoints/:id/mixer', requireAuth, (req, res) => {
+  const endpoint = endpointRow(req.params.id);
+  if (!endpoint) return res.status(404).json({ ok: false, error: 'Not found' });
+  const live = liveByEndpointId(endpoint.id);
+  res.json({ ok: true, mixer: mixerPayload(endpoint.id, live) });
+});
+
+app.post('/api/endpoints/:id/mixer/scan', requireAuth, (req, res) => {
+  const endpoint = endpointRow(req.params.id);
+  if (!endpoint) return res.status(404).json({ ok: false, error: 'Not found' });
+  const live = liveByEndpointId(endpoint.id);
+  if (!live || !live.mcu) return res.status(409).json({ ok: false, error: 'Companion is offline' });
+  live.mcu.requestScan();
+  res.json({ ok: true });
+});
+
+app.post('/api/endpoints/:id/mixer/bank', requireAuth, (req, res) => {
+  const endpoint = endpointRow(req.params.id);
+  if (!endpoint) return res.status(404).json({ ok: false, error: 'Not found' });
+  const live = liveByEndpointId(endpoint.id);
+  if (!live || !live.mcu) return res.status(409).json({ ok: false, error: 'Companion is offline' });
+  const dir = req.body && req.body.dir === 'right' ? 'right' : 'left';
+  live.mcu.bankPage(dir);
+  res.json({ ok: true, dir });
+});
+
+app.post('/api/endpoints/:id/mixer/focus', requireAuth, (req, res) => {
+  const endpoint = endpointRow(req.params.id);
+  if (!endpoint) return res.status(404).json({ ok: false, error: 'Not found' });
+  const live = liveByEndpointId(endpoint.id);
+  if (!live || !live.mcu) return res.status(409).json({ ok: false, error: 'Companion is offline' });
+  live.mcu.focusPage(Number(req.body && req.body.page));
+  res.json({ ok: true, page: Number(req.body && req.body.page) });
+});
+
+app.post('/api/endpoints/:id/mixer/fader', requireAuth, (req, res) => {
+  const endpoint = endpointRow(req.params.id);
+  if (!endpoint) return res.status(404).json({ ok: false, error: 'Not found' });
+  const live = liveByEndpointId(endpoint.id);
+  if (!live || !live.mcu) return res.status(409).json({ ok: false, error: 'Companion is offline' });
+  const { index, db, midi, touching, master } = req.body || {};
+  const midi14 = Number(midi);
+  const level = Number(db);
+  if (Number.isFinite(midi14)) {
+    if (master || Number(index) < 0) live.mcu.setMasterMidi(midi14, Boolean(touching));
+    else live.mcu.setTrackMidi(Number(index), midi14, Boolean(touching));
+  } else if (Number.isFinite(level)) {
+    if (master || Number(index) < 0) live.mcu.setMasterDb(level, Boolean(touching));
+    else live.mcu.setTrackDb(Number(index), level, Boolean(touching));
+  } else
+    return res.status(400).json({ ok: false, error: 'midi or db is required' });
+  res.json({ ok: true });
+});
+
+app.post('/api/endpoints/:id/mixer/rec', requireAuth, (req, res) => {
+  const endpoint = endpointRow(req.params.id);
+  if (!endpoint) return res.status(404).json({ ok: false, error: 'Not found' });
+  const live = liveByEndpointId(endpoint.id);
+  if (!live || !live.mcu) return res.status(409).json({ ok: false, error: 'Companion is offline' });
+  const index = Number(req.body && req.body.index);
+  if (!Number.isInteger(index) || index < 0)
+    return res.status(400).json({ ok: false, error: 'index is required' });
+  live.mcu.setTrackRec(index, Boolean(req.body && req.body.armed));
+  res.json({ ok: true });
+});
+
+app.post('/api/endpoints/:id/mixer/listen', requireAuth, (req, res) => {
+  const endpoint = endpointRow(req.params.id);
+  if (!endpoint) return res.status(404).json({ ok: false, error: 'Not found' });
+  const live = liveByEndpointId(endpoint.id);
+  if (!live || !live.mcu) return res.status(409).json({ ok: false, error: 'Companion is offline' });
+  const index = Number(req.body && req.body.index);
+  if (!Number.isInteger(index) || index < 0)
+    return res.status(400).json({ ok: false, error: 'index is required' });
+  live.mcu.setTrackListen(index, Boolean(req.body && req.body.on));
+  res.json({ ok: true, listenMode: live.mcu.listenMode });
+});
+
+app.post('/api/endpoints/:id/mixer/listen-map', requireAuth, (req, res) => {
+  const endpoint = endpointRow(req.params.id);
+  if (!endpoint) return res.status(404).json({ ok: false, error: 'Not found' });
+  const live = liveByEndpointId(endpoint.id);
+  if (!live || !live.mcu) return res.status(409).json({ ok: false, error: 'Companion is offline' });
+  live.mcu.setListenMode(req.body && req.body.mode);
+  res.json({ ok: true, listenMode: live.mcu.listenMode });
+});
+
+app.post('/api/endpoints/:id/midi', requireAuth, (req, res) => {
+  const endpoint = endpointRow(req.params.id);
+  if (!endpoint) return res.status(404).json({ ok: false, error: 'Not found' });
+  const live = liveByEndpointId(endpoint.id);
+  if (!live) return res.status(409).json({ ok: false, error: 'Companion is offline' });
+  const bytes = Array.isArray(req.body && req.body.bytes)
+    ? Buffer.from(req.body.bytes)
+    : fromHex(req.body && req.body.hex);
+  if (!bytes || !bytes.length)
+    return res.status(400).json({ ok: false, error: 'hex or bytes required' });
+  if (!writeLive(live, `MIDI ${toHex(bytes)}\n`))
+    return res.status(502).json({ ok: false, error: 'Could not reach companion' });
+  res.json({ ok: true });
 });
 
 app.patch('/api/endpoints/:id', requireAuth, (req, res) => {

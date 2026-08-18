@@ -12,7 +12,7 @@ PluginEditor::PluginEditor (PluginProcessor& p)
     title.setColour (juce::Label::textColourId, juce::Colours::white);
     hint.setFont (juce::Font { juce::FontOptions (13.0f) });
     hint.setColour (juce::Label::textColourId, juce::Colours::grey);
-    hint.setText ("Put this on the master bus. Track faders are in the companion Mixer tab.",
+    hint.setText ("Put this on the master bus. Track faders are in the AsaphOps web mixer (open it from the endpoint).",
                   juce::dontSendNotification);
 
     for (auto* label : { &title, &status, &project, &listen, &hint })

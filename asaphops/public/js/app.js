@@ -6,8 +6,15 @@ const state = {
   me: null,
   view: 'clients',
   param: '',
+  sub: '',
   liveStream: null,
-  liveStreamGen: 0
+  liveStreamGen: 0,
+  mixerMonitor: sessionStorage.getItem('asaphops_mixer_monitor') === '1',
+  mixerInOnly: sessionStorage.getItem('asaphops_mixer_in') === '1',
+  mixerHideMeters: sessionStorage.getItem('asaphops_mixer_hidemeters') !== '0',
+  sniffUntil: 0,
+  sniffHits: [],
+  sniffResult: ''
 };
 
 function $(sel, el = document) { return el.querySelector(sel); }
@@ -160,6 +167,8 @@ function startEndpointStream() {
             const payload = JSON.parse(dataLine.slice(5).trim());
             if (payload.type === 'endpoints' && Array.isArray(payload.endpoints))
               applyEndpointPresence(payload.endpoints);
+            if (payload.type === 'mixer')
+              applyMixerPayload(payload);
           } catch (_) {}
         }
       }
@@ -176,9 +185,12 @@ function startEndpointStream() {
 
 function route() {
   const hash = (location.hash.replace(/^#\/?/, '') || (state.token ? 'clients' : 'login'));
-  const [view, param] = hash.split('/');
+  const parts = hash.split('/').filter(Boolean);
+  const view = parts[0];
+  const param = parts[1] || '';
+  const sub = parts[2] || '';
   if (view === 'locations') {
-    location.hash = `#/endpoints${param ? `/${param}` : ''}`;
+    location.hash = `#/endpoints${parts.slice(1).length ? `/${parts.slice(1).join('/')}` : ''}`;
     return;
   }
   if (view === 'people') {
@@ -191,7 +203,8 @@ function route() {
     return;
   }
   state.view = view;
-  state.param = param || '';
+  state.param = param;
+  state.sub = sub;
   render();
 }
 
@@ -351,6 +364,7 @@ function bind() {
     form.addEventListener('submit', onForm);
   });
   bindEventForm();
+  bindMixerFaders();
 }
 
 function bindEventForm() {
@@ -480,6 +494,139 @@ async function onAction(e) {
   if (action === 'cancel') {
     if (!confirm('Cancel this occurrence?')) return;
     await api(`/occurrences/${id}/cancel`, { method: 'POST' });
+  }
+  if (action === 'mixer-scan') {
+    const data = await api(`/endpoints/${id}/mixer/scan`, { method: 'POST', body: {} });
+    if (!data.ok) window.alert(data.error || 'Could not refresh the Mackie surfaces.');
+    return;
+  }
+  if (action === 'mixer-focus') {
+    const page = Number(btn.dataset.page);
+    const data = await api(`/endpoints/${state.param}/mixer/focus`, { method: 'POST', body: { page } });
+    if (!data.ok) window.alert(data.error || 'Could not focus that page.');
+    return;
+  }
+  if (action === 'mixer-bank') {
+    const dir = btn.dataset.dir === 'right' ? 'right' : 'left';
+    const data = await api(`/endpoints/${state.param}/mixer/bank`, { method: 'POST', body: { dir } });
+    if (!data.ok) window.alert(data.error || 'Could not bank the MCU.');
+    return;
+  }
+  if (action === 'mixer-monitor') {
+    state.mixerMonitor = !state.mixerMonitor;
+    sessionStorage.setItem('asaphops_mixer_monitor', state.mixerMonitor ? '1' : '0');
+    const panel = $('#mixerDebug');
+    const btn = document.querySelector('[data-action="mixer-monitor"]');
+    if (panel) panel.hidden = !state.mixerMonitor;
+    if (btn) btn.textContent = state.mixerMonitor ? 'Hide MIDI monitor' : 'MIDI monitor';
+    if (state.mixerMonitor && state.param) {
+      api(`/endpoints/${state.param}/mixer`).then((data) => {
+        if (data.ok && data.mixer) patchMixer(data.mixer);
+      });
+    }
+    return;
+  }
+  if (action === 'mixer-in-only') {
+    state.mixerInOnly = !state.mixerInOnly;
+    sessionStorage.setItem('asaphops_mixer_in', state.mixerInOnly ? '1' : '0');
+    const b = document.querySelector('[data-action="mixer-in-only"]');
+    if (b) b.classList.toggle('on', state.mixerInOnly);
+    if (state.param) {
+      api(`/endpoints/${state.param}/mixer`).then((data) => {
+        if (data.ok && data.mixer) patchMixer(data.mixer);
+      });
+    }
+    return;
+  }
+  if (action === 'mixer-hide-meters') {
+    state.mixerHideMeters = !state.mixerHideMeters;
+    sessionStorage.setItem('asaphops_mixer_hidemeters', state.mixerHideMeters ? '1' : '0');
+    const b = document.querySelector('[data-action="mixer-hide-meters"]');
+    if (b) b.classList.toggle('on', state.mixerHideMeters);
+    if (state.param) {
+      api(`/endpoints/${state.param}/mixer`).then((data) => {
+        if (data.ok && data.mixer) patchMixer(data.mixer);
+      });
+    }
+    return;
+  }
+  if (action === 'mixer-sniff') {
+    state.mixerMonitor = true;
+    state.mixerInOnly = true;
+    state.mixerHideMeters = true;
+    sessionStorage.setItem('asaphops_mixer_monitor', '1');
+    sessionStorage.setItem('asaphops_mixer_in', '1');
+    sessionStorage.setItem('asaphops_mixer_hidemeters', '1');
+    state.sniffHits = [];
+    state.sniffResult = '';
+    state.sniffStart = Date.now();
+    state.sniffUntil = Date.now() + 6000;
+    const panel = $('#mixerDebug');
+    if (panel) panel.hidden = false;
+    const hint = $('#mixerSniffHint');
+    if (hint) hint.textContent = 'Sniffing 6s — toggle the speaker (input monitor) in the DAW mixer, not the web IN button.';
+    window.setTimeout(() => {
+      if (Date.now() < state.sniffUntil - 50) return;
+      const unique = [];
+      for (const line of state.sniffHits) {
+        if (!unique.includes(line)) unique.push(line);
+      }
+      state.sniffResult = unique.length
+        ? `DAW sent ${unique.length} distinct IN message(s) while you toggled listen:\n${unique.join('\n')}`
+        : 'DAW sent no MCU notes/CC for listen (meters hidden). Reaper’s stock Mackie Control does not report or accept input monitor on this port.';
+      state.sniffUntil = 0;
+      const h = $('#mixerSniffHint');
+      if (h) h.textContent = state.sniffResult;
+    }, 6200);
+    return;
+  }
+  if (action === 'mixer-listen-map') {
+    const mode = btn.dataset.mode || 'none';
+    const data = await api(`/endpoints/${state.param}/mixer/listen-map`, {
+      method: 'POST',
+      body: { mode }
+    });
+    if (!data.ok) window.alert(data.error || 'Could not set listen mapping.');
+    else {
+      const hint = $('#mixerSniffHint');
+      if (hint) {
+        hint.textContent = data.listenMode === 'shift-rec'
+          ? 'IN now sends MCU Shift + Rec/Rdy (Logic / Cubase). Reaper will still treat that as rec-arm.'
+          : 'IN sends no MIDI. Use Sniff DAW listen, or enable Shift+Rec if this DAW maps it.';
+      }
+    }
+    return;
+  }
+  if (action === 'mixer-rec') {
+    const index = Number(btn.dataset.index);
+    const armed = !btn.classList.contains('armed');
+    btn.classList.toggle('armed', armed);
+    const data = await api(`/endpoints/${state.param}/mixer/rec`, {
+      method: 'POST',
+      body: { index, armed }
+    });
+    if (!data.ok) {
+      btn.classList.toggle('armed', !armed);
+      window.alert(data.error || 'Could not arm this track.');
+    }
+    return;
+  }
+  if (action === 'mixer-listen') {
+    const index = Number(btn.dataset.index);
+    const on = !btn.classList.contains('on');
+    btn.classList.toggle('on', on);
+    const data = await api(`/endpoints/${state.param}/mixer/listen`, {
+      method: 'POST',
+      body: { index, on }
+    });
+    if (!data.ok) {
+      btn.classList.toggle('on', !on);
+      window.alert(data.error || 'Could not toggle input monitoring.');
+    } else if (data.listenMode === 'none') {
+      btn.classList.toggle('on', !on);
+      window.alert('Listen is not mapped on MCU. Open MIDI monitor, click “Sniff DAW listen”, and toggle the speaker in Reaper. For Logic/Cubase, enable Shift+Rec in that panel.');
+    }
+    return;
   }
   if (action === 'remove-endpoint') {
     if (!confirm('Remove this endpoint from the system? This cannot be undone.')) return;
@@ -686,6 +833,343 @@ async function staff() {
     </article>` };
 }
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+}
+
+function formatDb(db) {
+  if (db == null || db <= -100) return '−∞';
+  const n = Number(db);
+  return `${n >= 0 ? '+' : ''}${n.toFixed(1)} dB`;
+}
+
+const MCU_FADER_KNOTS = [
+  { midi: 0, db: -144 },
+  { midi: 1311, db: -60 },
+  { midi: 1966, db: -55 },
+  { midi: 2621, db: -50 },
+  { midi: 3277, db: -45 },
+  { midi: 4096, db: -40 },
+  { midi: 5079, db: -35 },
+  { midi: 6062, db: -30 },
+  { midi: 7209, db: -25 },
+  { midi: 8519, db: -20 },
+  { midi: 9830, db: -15 },
+  { midi: 11304, db: -10 },
+  { midi: 13106, db: -5 },
+  { midi: 14880, db: 0 },
+  { midi: 15728, db: 5 },
+  { midi: 16383, db: 10 }
+];
+
+function midiToDb(midi) {
+  midi = Math.max(0, Math.min(16383, Number(midi) || 0));
+  for (let i = 1; i < MCU_FADER_KNOTS.length; i++) {
+    if (midi <= MCU_FADER_KNOTS[i].midi) {
+      const span = MCU_FADER_KNOTS[i].midi - MCU_FADER_KNOTS[i - 1].midi;
+      const t = span > 0 ? (midi - MCU_FADER_KNOTS[i - 1].midi) / span : 0;
+      return MCU_FADER_KNOTS[i - 1].db + t * (MCU_FADER_KNOTS[i].db - MCU_FADER_KNOTS[i - 1].db);
+    }
+  }
+  return 10;
+}
+
+function sliderFromTrack(t) {
+  if (!t || t.midi == null || t.midi < 0) return 0;
+  return Math.max(0, Math.min(16383, t.midi));
+}
+
+const faderMotion = new Map();
+let faderMotionRaf = 0;
+const FADER_TAU_MS = 70;
+
+function stopFaderMotion(el) {
+  if (el) faderMotion.delete(el);
+  if (!faderMotion.size && faderMotionRaf) {
+    cancelAnimationFrame(faderMotionRaf);
+    faderMotionRaf = 0;
+  }
+}
+
+function tickFaderMotion(now) {
+  faderMotionRaf = 0;
+  for (const [el, job] of faderMotion) {
+    if (!el.isConnected || el.dataset.dragging === '1') {
+      faderMotion.delete(el);
+      continue;
+    }
+    const dt = Math.min(48, Math.max(0, now - job.last));
+    job.last = now;
+    job.display += (job.target - job.display) * (1 - Math.exp(-dt / FADER_TAU_MS));
+    if (Math.abs(job.target - job.display) < 1.5) {
+      el.value = String(Math.round(job.target));
+      faderMotion.delete(el);
+      continue;
+    }
+    el.value = String(Math.round(job.display));
+  }
+  if (faderMotion.size) faderMotionRaf = requestAnimationFrame(tickFaderMotion);
+}
+
+function easeFaderTo(el, target) {
+  const to = Math.max(0, Math.min(16383, target));
+  const job = faderMotion.get(el);
+  if (job) {
+    job.target = to;
+  } else {
+    const display = Number(el.value) || 0;
+    if (Math.abs(display - to) < 1.5) {
+      el.value = String(to);
+      return;
+    }
+    faderMotion.set(el, { display, target: to, last: performance.now() - 16 });
+  }
+  if (!faderMotionRaf) faderMotionRaf = requestAnimationFrame(tickFaderMotion);
+}
+
+function mixerStripKey(mixer) {
+  const tracks = (mixer && mixer.tracks) || [];
+  return `${(mixer && mixer.pages || []).length}:${mixer && mixer.pageIndex || 0}:${mixer && mixer.scanning ? 1 : 0}:${tracks.map((t) => t.name || '').join('|')}`;
+}
+
+function mixerStripHtml(t) {
+  const live = t.master || t.live;
+  const rec = t.master
+    ? ''
+    : `<div class="mixer-btns">
+      <button type="button" class="mixer-rec${t.rec ? ' armed' : ''}" data-action="mixer-rec" data-index="${t.index}" ${live ? '' : 'disabled'} title="Arm for recording">R</button>
+      <button type="button" class="mixer-listen${t.listen ? ' on' : ''}" data-action="mixer-listen" data-index="${t.index}" ${live ? '' : 'disabled'} title="Input monitoring (MCU Shift + Rec/Rdy)">IN</button>
+    </div>`;
+  return `<div class="mixer-strip${live ? ' is-live' : ' is-view'}" data-page="${t.page}" data-live="${live ? '1' : '0'}">
+    <div class="mixer-name">${escapeHtml(t.name || '—')}</div>
+    ${rec}
+    <div class="mixer-fader-well">
+      <input type="range" class="mixer-fader" min="0" max="16383" step="1"
+        value="${sliderFromTrack(t)}" data-fader data-index="${t.index}"
+        data-master="${t.master ? '1' : '0'}" data-live="${live ? '1' : '0'}"
+        ${t.master || live ? '' : 'tabindex="-1"'} />
+    </div>
+    <div class="mixer-db">${t.known ? formatDb(t.db) : '—'}</div>
+    ${t.master || live ? '' : '<div class="mixer-view-tag">view</div>'}
+  </div>`;
+}
+
+function mixerBoardHtml(mixer) {
+  const pages = mixer.pages || [];
+  if (!pages.length && !(mixer.tracks || []).length)
+    return '<p class="sub">Waiting for Mackie Control…</p>';
+  const groups = pages.map((page) => {
+    const strips = (page.tracks || []).map(mixerStripHtml).join('');
+    return `<section class="mixer-page${page.live ? ' is-live' : ''}" data-page="${page.index}">
+      <button type="button" class="mixer-page-label" data-action="mixer-focus" data-page="${page.index}">
+        ${escapeHtml(page.name || `MCU ${page.index + 1}`)}
+      </button>
+      <div class="mixer-page-strips">${strips}</div>
+    </section>`;
+  }).join('');
+  const master = (mixer.tracks || []).find((t) => t.master);
+  return `${groups}${master ? mixerStripHtml(master) : ''}`;
+}
+
+function mixerStatusText(mixer) {
+  if (!mixer) return 'No mixer data yet.';
+  if (!mixer.connected) return 'Companion offline. Sign in on the machine, then open the mixer.';
+  if (mixer.scanning) return mixer.scanLabel || mixer.status || 'Building mixer…';
+  const bits = [];
+  if (mixer.linked) bits.push('Linked to DAW');
+  else bits.push(mixer.status || 'Waiting for Mackie Control');
+  if (mixer.pageCount) bits.push(`${mixer.pageCount} live surfaces (32 channels)`);
+  if (mixer.hint) bits.push(mixer.hint);
+  return bits.join(' · ');
+}
+
+function mixerNoiseMidi(m) {
+  const t = m.text || '';
+  if (t.startsWith('pitch ') || t.startsWith('meter ')) return true;
+  if (t.startsWith('7-seg') || t.startsWith('vpot ring')) return true;
+  if (t.includes('connection query') || t.includes('host query')) return true;
+  const hex = String(m.hex || '').toLowerCase().replace(/\s/g, '');
+  if (hex.startsWith('b0') && hex.length >= 4) {
+    const cc = parseInt(hex.slice(2, 4), 16);
+    if (cc >= 0x30 && cc <= 0x37) return true;
+    if (cc >= 0x40 && cc <= 0x4b) return true;
+  }
+  return false;
+}
+
+function collapseMixerLog(rows) {
+  const out = [];
+  let lastKey = '';
+  let count = 0;
+  for (const row of rows) {
+    const key = row.replace(/^\d{2}:\d{2}:\d{2}\s+/, '');
+    if (key === lastKey) {
+      count += 1;
+      continue;
+    }
+    if (count > 1) out[out.length - 1] += `  ×${count}`;
+    out.push(row);
+    lastKey = key;
+    count = 1;
+  }
+  if (count > 1) out[out.length - 1] += `  ×${count}`;
+  return out;
+}
+
+function mixerDebugHtml(mixer) {
+  const d = mixer.debug || {};
+  const ago = d.lastHostMs == null ? 'never' : `${Math.round(d.lastHostMs / 100) / 10}s ago`;
+  const meta = [
+    `scan=${d.scan || '—'}`,
+    `linked=${d.linked ? 'yes' : 'no'}`,
+    `device=0x${(d.deviceId != null ? d.deviceId : 0).toString(16)}`,
+    `bank=${d.bankOffset ?? '—'}`,
+    `in=${d.inCount ?? 0}`,
+    `out=${d.outCount ?? 0}`,
+    `listen=${d.listenMode || 'none'}`,
+    `last DAW MIDI=${ago}`,
+    `LCD [${d.lcd || 'empty'}]`
+  ].join('  ·  ');
+  let msgs = d.messages || [];
+  if (state.mixerInOnly) msgs = msgs.filter((m) => m.dir === 'in');
+  if (state.mixerHideMeters) msgs = msgs.filter((m) => !mixerNoiseMidi(m));
+  if (state.sniffUntil && Date.now() < state.sniffUntil) {
+    for (const m of msgs) {
+      if (m.dir !== 'in' || mixerNoiseMidi(m) || m.t < (state.sniffStart || 0) - 50) continue;
+      const line = `${m.text}    ${m.hex}`;
+      if (!state.sniffHits.includes(line)) state.sniffHits.push(line);
+    }
+  }
+  const rows = collapseMixerLog(msgs.map((m) => {
+    const time = new Date(m.t).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const dir = m.dir === 'out' ? 'OUT → DAW' : 'IN  ← DAW';
+    return `${time}  ${dir.padEnd(10)}  ${m.text}    ${m.hex}`;
+  }));
+  return { meta, log: rows.join('\n') || 'No MIDI in this filter. Move a fader or bank; for listen sniff, hide meters and watch IN ← DAW.' };
+}
+
+function patchMixer(mixer) {
+  const status = $('#mixerStatus');
+  if (status) status.textContent = mixerStatusText(mixer);
+  const scanEl = $('#mixerScan');
+  if (scanEl) {
+    scanEl.hidden = !mixer.scanning;
+    const label = scanEl.querySelector('.mixer-scan-label');
+    if (label) label.textContent = mixer.scanLabel || 'Building mixer…';
+  }
+  if (state.mixerMonitor) {
+    const dbg = mixerDebugHtml(mixer);
+    const meta = $('#mixerDebugMeta');
+    if (meta) meta.textContent = dbg.meta;
+    const log = $('#mixerDebugLog');
+    if (log) {
+      const stick = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+      log.textContent = dbg.log;
+      if (stick) log.scrollTop = log.scrollHeight;
+    }
+  }
+  const board = $('#mixerBoard');
+  if (!board) return;
+  const tracks = mixer.tracks || [];
+  const key = mixerStripKey(mixer);
+  if (board.dataset.sig !== key) {
+    faderMotion.clear();
+    if (faderMotionRaf) {
+      cancelAnimationFrame(faderMotionRaf);
+      faderMotionRaf = 0;
+    }
+    board.dataset.sig = key;
+    board.innerHTML = mixerBoardHtml(mixer);
+    bindMixerFaders();
+    return;
+  }
+  for (const t of tracks) {
+    const el = board.querySelector(`[data-fader][data-index="${t.index}"][data-master="${t.master ? '1' : '0'}"]`);
+    if (!el) continue;
+    const strip = el.closest('.mixer-strip') || el.parentElement;
+    strip.classList.toggle('is-live', Boolean(t.live || t.master));
+    strip.classList.toggle('is-view', !t.live && !t.master);
+    el.dataset.live = t.live || t.master ? '1' : '0';
+    const rec = strip.querySelector('.mixer-rec');
+    if (rec) rec.classList.toggle('armed', Boolean(t.rec));
+    const listen = strip.querySelector('.mixer-listen');
+    if (listen) listen.classList.toggle('on', Boolean(t.listen));
+    const nameEl = strip.querySelector('.mixer-name');
+    if (nameEl) nameEl.textContent = t.name || '—';
+    if (el.dataset.dragging === '1' || Number(el.dataset.echoUntil || 0) > Date.now()) continue;
+    easeFaderTo(el, sliderFromTrack(t));
+    const dbEl = strip.querySelector('.mixer-db');
+    if (dbEl) dbEl.textContent = t.known ? formatDb(t.db) : '—';
+  }
+}
+
+function applyMixerPayload(payload) {
+  if (state.view !== 'endpoints' || state.sub !== 'mixer') return;
+  if (payload.endpointId !== state.param) return;
+  patchMixer(payload);
+}
+
+function bindMixerFaders() {
+  const board = $('#mixerBoard');
+  if (!board || board.dataset.bound === '1') return;
+  board.dataset.bound = '1';
+  let dragEl = null;
+  board.addEventListener('pointerdown', (ev) => {
+    const el = ev.target.closest('[data-fader]');
+    if (!el) return;
+    if (el.dataset.master !== '1' && el.dataset.live !== '1') {
+      const page = Number(el.closest('[data-page]')?.dataset.page);
+      if (Number.isInteger(page))
+        api(`/endpoints/${state.param}/mixer/focus`, { method: 'POST', body: { page } });
+      ev.preventDefault();
+      return;
+    }
+    dragEl = el;
+    el.dataset.dragging = '1';
+    delete el.dataset.echoUntil;
+    stopFaderMotion(el);
+    try { el.setPointerCapture(ev.pointerId); } catch (_) {}
+  });
+  const send = (el, touching) => {
+    if (!el) return;
+    const dbEl = el.closest('.mixer-strip')?.querySelector('.mixer-db');
+    const midi = Math.max(0, Math.min(16383, Number(el.value) || 0));
+    const db = midiToDb(midi);
+    if (dbEl) dbEl.textContent = formatDb(db);
+    api(`/endpoints/${state.param}/mixer/fader`, {
+      method: 'POST',
+      body: {
+        index: Number(el.dataset.index),
+        master: el.dataset.master === '1',
+        midi,
+        touching
+      }
+    });
+  };
+  board.addEventListener('input', (ev) => {
+    const el = dragEl || ev.target.closest('[data-fader]');
+    if (!el) return;
+    if (dragEl && el !== dragEl) return;
+    const now = Date.now();
+    if (now - Number(el.dataset.lastSend || 0) < 40) return;
+    el.dataset.lastSend = String(now);
+    send(el, true);
+  });
+  const endTouch = (ev) => {
+    const el = dragEl || ev.target.closest?.('[data-fader]') || board.querySelector('[data-dragging="1"]');
+    if (!el || el.dataset.dragging !== '1') return;
+    el.dataset.dragging = '0';
+    el.dataset.echoUntil = String(Date.now() + 350);
+    dragEl = null;
+    send(el, false);
+  };
+  board.addEventListener('pointerup', endTouch);
+  board.addEventListener('pointercancel', endTouch);
+  window.addEventListener('pointerup', endTouch);
+}
+
 async function endpoints() {
   const [ep, cl] = await Promise.all([api('/endpoints'), api('/clients')]);
   const items = ep.endpoints || [];
@@ -712,6 +1196,48 @@ async function endpoints() {
   const clientLabel = e.client_id
     ? `<a href="#/clients/${e.client_id}">${e.client_name}</a>`
     : 'Unassigned';
+  if (state.sub === 'mixer') {
+    const mix = await api(`/endpoints/${e.id}/mixer`);
+    const mixer = mix.mixer || { connected: e.connected, tracks: [] };
+    const dbg = mixerDebugHtml(mixer);
+    return {
+      rail: r,
+      main: `<div class="top"><div><h1>${e.name} mixer</h1>
+        <p class="sub">${clientLabel} · MCU + three extenders = 32 live faders. Bank ←/→ moves all four desks together for tracks 33+.</p></div>
+        ${connectionBadge(e.connected, e.id)}</div>
+        <article class="card mixer-card">
+          <div class="mixer-toolbar">
+            <p class="sub" id="mixerStatus">${mixerStatusText(mixer)}</p>
+            <div class="mixer-actions">
+              <button class="btn" type="button" data-action="mixer-bank" data-dir="left" title="MCU Bank Left">Bank ←</button>
+              <button class="btn" type="button" data-action="mixer-bank" data-dir="right" title="MCU Bank Right">Bank →</button>
+              <button class="btn" type="button" data-action="mixer-scan" data-id="${e.id}">Refresh surfaces</button>
+              <button class="btn" type="button" data-action="mixer-monitor">${state.mixerMonitor ? 'Hide MIDI monitor' : 'MIDI monitor'}</button>
+              <a class="btn" href="#/endpoints/${e.id}">Back to endpoint</a>
+            </div>
+          </div>
+          <div class="mixer-scan" id="mixerScan" ${mixer.scanning ? '' : 'hidden'}>
+            <div class="mixer-scan-spin" aria-hidden="true"></div>
+            <p class="mixer-scan-label">${escapeHtml(mixer.scanLabel || 'Building mixer…')}</p>
+          </div>
+          <div class="mixer-board" id="mixerBoard" data-sig="${mixerStripKey(mixer)}">${mixerBoardHtml(mixer)}</div>
+        </article>
+        <article class="card mixer-debug" id="mixerDebug" ${state.mixerMonitor ? '' : 'hidden'}>
+          <h2>MIDI monitor</h2>
+          <p class="sub">Click <strong>Sniff DAW listen</strong>, then toggle the speaker on a track in the DAW (not the web IN button). Only <code>IN ← DAW</code> notes/CC/sysex are captured.</p>
+          <div class="mixer-actions">
+            <button class="btn" type="button" data-action="mixer-sniff">Sniff DAW listen</button>
+            <button class="btn${state.mixerInOnly ? ' on' : ''}" type="button" data-action="mixer-in-only">IN only</button>
+            <button class="btn${state.mixerHideMeters ? ' on' : ''}" type="button" data-action="mixer-hide-meters">Hide meters/displays</button>
+            <button class="btn" type="button" data-action="mixer-listen-map" data-mode="none">IN: no MIDI</button>
+            <button class="btn" type="button" data-action="mixer-listen-map" data-mode="shift-rec">IN: Shift+Rec</button>
+          </div>
+          <p class="sub" id="mixerSniffHint">${escapeHtml(state.sniffResult || 'Listen MIDI is off until a sniff finds a message, or you enable Shift+Rec for Logic/Cubase.')}</p>
+          <p class="sub" id="mixerDebugMeta">${state.mixerMonitor ? escapeHtml(dbg.meta) : ''}</p>
+          <pre class="mixer-debug-log" id="mixerDebugLog">${state.mixerMonitor ? escapeHtml(dbg.log) : ''}</pre>
+        </article>`
+    };
+  }
   return { rail: r, main: `<div class="top"><div><h1>${e.name}</h1><p class="sub">${clientLabel} · ${e.code || '—'}</p></div>${connectionBadge(e.connected, e.id)}</div>
     <article class="card"><h2>Machine</h2>
       <p>Hostname: ${e.hostname || '—'}</p>
@@ -720,6 +1246,10 @@ async function endpoints() {
       <p>Machine ID: ${e.machine_id || '—'}</p>
       <p>Last seen: <span data-endpoint-last-seen="${e.id}">${fmtTime(e.last_seen_at)}</span></p>
       <p>Signed in as: ${e.person_name || e.person_email || '—'}</p>
+    </article>
+    <article class="card"><h2>Mixer</h2>
+      <p class="sub">The mixer shows 32 live Mackie channels (MCU + XT1–XT3). Rebuild and restart the companion so those ports exist, then add three Mackie Control Extenders in the DAW. Restart the ops server to pick up mixer changes.</p>
+      <p><a class="btn primary" href="#/endpoints/${e.id}/mixer">Open mixer</a></p>
     </article>
     <article class="card"><h2>Assign to client</h2>
       <form class="form-grid" data-form="assign-endpoint">

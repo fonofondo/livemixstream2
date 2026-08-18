@@ -137,6 +137,7 @@ void OpsClient::startLive()
     machine = MachineIdentity::get().getMachineId();
     if (live == nullptr)
         live = std::make_unique<LiveConnection>();
+    live->setIncomingHandler (liveLineHandler);
     live->connectTo (url, tokenCopy, machine);
 }
 
@@ -144,6 +145,19 @@ void OpsClient::stopLive()
 {
     if (live != nullptr)
         live->disconnect();
+}
+
+void OpsClient::sendLiveLine (const juce::String& line)
+{
+    if (live != nullptr)
+        live->sendLine (line);
+}
+
+void OpsClient::setLiveLineHandler (std::function<void (juce::String)> handler)
+{
+    liveLineHandler = std::move (handler);
+    if (live != nullptr)
+        live->setIncomingHandler (liveLineHandler);
 }
 
 juce::var OpsClient::postJson (const juce::String& path, const juce::var& body, int* statusOut)

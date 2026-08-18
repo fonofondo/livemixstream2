@@ -1,5 +1,6 @@
 #include "LiveConnection.h"
 #include <cstring>
+#include <functional>
 
 namespace AsaphOps {
 
@@ -61,13 +62,49 @@ void LiveConnection::disconnect()
     wantConnected = false;
     stopThread (8000);
     live = false;
-    setStatusLocked (status, lock, "offline");
+    {
+        const juce::ScopedLock sl (lock);
+        outbound.clear();
+        status = "offline";
+    }
 }
 
 juce::String LiveConnection::getStatus() const
 {
     const juce::ScopedLock sl (lock);
     return status;
+}
+
+void LiveConnection::setIncomingHandler (std::function<void (juce::String)> handler)
+{
+    const juce::ScopedLock sl (lock);
+    incoming = std::move (handler);
+}
+
+void LiveConnection::sendLine (const juce::String& line)
+{
+    auto text = line.trimEnd();
+    if (text.isEmpty())
+        return;
+    if (! text.endsWithChar ('\n'))
+        text += "\n";
+    const juce::ScopedLock sl (lock);
+    if (text.startsWith ("MIDI "))
+    {
+        int midiLines = 0;
+        for (auto& existing : outbound)
+            if (existing.startsWith ("MIDI "))
+                ++midiLines;
+        if (midiLines >= 512)
+            return;
+    }
+    if (text.startsWith ("PORT "))
+    {
+        for (int i = outbound.size(); --i >= 0;)
+            if (outbound[i].startsWith ("PORT "))
+                outbound.remove (i);
+    }
+    outbound.add (text);
 }
 
 bool LiveConnection::writeText (juce::StreamingSocket& sock, const juce::String& text)
@@ -88,8 +125,11 @@ void LiveConnection::run()
         live = false;
         if (threadShouldExit() || ! wantConnected.load())
             break;
+        {
+            const juce::ScopedLock sl (lock);
+            juce::Logger::writeToLog ("ops live socket dropped (" + status + "); retrying");
+        }
         setStatusLocked (status, lock, "reconnecting");
-        juce::Logger::writeToLog ("ops live socket dropped; retrying");
         wait ((int) backoffMs);
         backoffMs = juce::jmin (backoffMs * 2, 8000);
     }
@@ -145,7 +185,10 @@ bool LiveConnection::runSession()
     while (! threadShouldExit() && wantConnected.load())
     {
         if (! readAvailable (sock, buffer, 200))
+        {
+            setStatusLocked (status, lock, "read failed / server closed");
             return true;
+        }
 
         while (true)
         {
@@ -158,17 +201,51 @@ bool LiveConnection::runSession()
             {
                 lastPing = juce::Time::getMillisecondCounter();
                 if (! writeText (sock, "PONG\n"))
+                {
+                    setStatusLocked (status, lock, "pong write failed");
                     return true;
+                }
             }
             else if (line.startsWith ("ERROR"))
             {
                 juce::Logger::writeToLog ("ops live socket: " + line);
+                setStatusLocked (status, lock, line);
                 return true;
+            }
+            else if (line.isNotEmpty())
+            {
+                std::function<void (juce::String)> handler;
+                {
+                    const juce::ScopedLock sl (lock);
+                    handler = incoming;
+                }
+                if (handler)
+                    handler (line);
             }
         }
 
-        if (juce::Time::getMillisecondCounter() - lastPing > 15000)
+        juce::StringArray flush;
         {
+            const juce::ScopedLock sl (lock);
+            flush = outbound;
+            outbound.clear();
+        }
+        if (flush.size() > 0)
+        {
+            juce::String blob;
+            for (auto& out : flush)
+                blob += out;
+            if (! writeText (sock, blob))
+            {
+                setStatusLocked (status, lock, "midi write failed (" + juce::String (flush.size()) + " lines)");
+                return true;
+            }
+            lastPing = juce::Time::getMillisecondCounter();
+        }
+
+        if (juce::Time::getMillisecondCounter() - lastPing > 20000)
+        {
+            setStatusLocked (status, lock, "ping timeout");
             juce::Logger::writeToLog ("ops live socket: ping timeout");
             return true;
         }

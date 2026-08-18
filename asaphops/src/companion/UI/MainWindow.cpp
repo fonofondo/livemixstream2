@@ -1,5 +1,4 @@
 #include "MainWindow.h"
-#include "MixerBoard.h"
 #include "../App.h"
 #include "../Autostart.h"
 #include "../../shared/MachineIdentity.h"
@@ -28,7 +27,6 @@ public:
         addAndMakeVisible (tabs);
         tabs.addTab ("Projects", juce::Colours::darkgrey, &projectsPage, false);
         tabs.addTab ("Connections", juce::Colours::darkgrey, &connectionsPage, false);
-        tabs.addTab ("Mixer", juce::Colours::darkgrey, &mixerPage, false);
         tabs.addTab ("Settings", juce::Colours::darkgrey, &settingsPage, false);
         tabs.addTab ("Diagnostics", juce::Colours::darkgrey, &diagnosticsPage, false);
 
@@ -42,15 +40,6 @@ public:
         connectionsList.setTextToShowWhenEmpty ("No plugin connections.", juce::Colours::grey);
         connectionsList.setReadOnly (true);
         connectionsList.setMultiLine (true);
-
-        mixerPage.addAndMakeVisible (mixerStatus);
-        mixerStatus.setJustificationType (juce::Justification::topLeft);
-        mixerStatus.setMinimumHorizontalScale (0.8f);
-        mixerPage.addAndMakeVisible (rescanButton);
-        rescanButton.setButtonText ("Rescan tracks");
-        rescanButton.onClick = [this] { app.getMackie().requestScan(); };
-        mixerBoard = std::make_unique<MixerBoard> (app.getMackie());
-        mixerPage.addAndMakeVisible (*mixerBoard);
 
         diagnosticsPage.addAndMakeVisible (lastDebugLabel);
         lastDebugLabel.setText ("Last request", juce::dontSendNotification);
@@ -111,7 +100,7 @@ public:
         app.getRegistry().addChangeListener (this);
         app.getSessions().addChangeListener (this);
         app.getOps().addChangeListener (this);
-        app.getMackie().addChangeListener (this);
+        app.getMidi().addChangeListener (this);
         startTimerHz (1);
         refreshAll();
     }
@@ -121,7 +110,7 @@ public:
         app.getRegistry().removeChangeListener (this);
         app.getSessions().removeChangeListener (this);
         app.getOps().removeChangeListener (this);
-        app.getMackie().removeChangeListener (this);
+        app.getMidi().removeChangeListener (this);
     }
 
     void resized() override
@@ -133,7 +122,6 @@ public:
         };
         pad (projectsPage, projectsList);
         pad (connectionsPage, connectionsList);
-        layoutMixer();
 
         auto diag = diagnosticsPage.getLocalBounds().reduced (12);
         lastDebugLabel.setBounds (diag.removeFromTop (22));
@@ -151,7 +139,6 @@ private:
         refreshLog();
         refreshLastDebug();
         refreshConnections();
-        refreshMixer();
     }
     void changeListenerCallback (juce::ChangeBroadcaster*) override { refreshAll(); }
 
@@ -159,7 +146,6 @@ private:
     {
         refreshProjects();
         refreshConnections();
-        refreshMixer();
         refreshSettings();
         refreshLog();
         refreshLastDebug();
@@ -241,30 +227,6 @@ private:
             connectionsList.setText (text, false);
     }
 
-    void layoutMixer()
-    {
-        auto area = mixerPage.getLocalBounds().reduced (12);
-        auto top = area.removeFromTop (88);
-        rescanButton.setBounds (top.removeFromRight (120).reduced (0, 6));
-        top.removeFromRight (8);
-        mixerStatus.setBounds (top);
-        area.removeFromTop (8);
-        if (mixerBoard != nullptr)
-            mixerBoard->setBounds (area);
-    }
-
-    void refreshMixer()
-    {
-        juce::String header;
-        header << (app.getMackie().arePortsOpen() ? "Ports: " : "Ports failed: ")
-               << app.getMackie().getPortName() << "\n"
-               << app.getMackie().getStatus();
-        auto hint = app.getMackie().getSetupHint();
-        if (hint.isNotEmpty())
-            header << "\n" << hint;
-        mixerStatus.setText (header, juce::dontSendNotification);
-    }
-
     void layoutSettings()
     {
         const bool loggedIn = app.getOps().isLoggedIn();
@@ -321,8 +283,9 @@ private:
                    << "Endpoint: " << (s.endpointCode.isNotEmpty() ? s.endpointCode : "pending") << "\n"
                    << "Endpoint ID: " << s.endpointId << "\n"
                    << "Ops connection: " << (app.getOps().isLiveConnected() ? "live" : app.getOps().getLiveStatus()) << "\n"
-                   << "Mackie Control: " << (app.getMackie().isHostLinked() ? "linked to DAW" : app.getMackie().getStatus()) << "\n"
-                   << "Ops can assign this machine to a client in the Endpoints view.\n";
+                   << "MIDI ports: " << (app.getMidi().arePortsOpen() ? app.getMidi().getPortName() : "closed") << "\n"
+                   << app.getMidi().getStatus() << "\n"
+                   << "This app only passes MIDI (MCU + 3 extenders). Mixer logic lives in the web app.\n";
         }
         else
         {
@@ -364,7 +327,7 @@ private:
         if (! app.getOps().login (email.getText().trim(), password.getText()))
         {
             refreshLastDebug();
-            tabs.setCurrentTabIndex (4);
+            tabs.setCurrentTabIndex (3);
         }
         else
         {
@@ -377,12 +340,9 @@ private:
 
     CompanionApp& app;
     juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
-    juce::Component projectsPage, connectionsPage, mixerPage, settingsPage, diagnosticsPage;
+    juce::Component projectsPage, connectionsPage, settingsPage, diagnosticsPage;
     juce::TextEditor projectsList, connectionsList, logView, lastDebugView;
     juce::Label serverLabel, emailLabel, passwordLabel, statusLabel, lastDebugLabel, logLabel;
-    juce::Label mixerStatus;
-    juce::TextButton rescanButton;
-    std::unique_ptr<MixerBoard> mixerBoard;
     juce::TextEditor serverUrl, email, password;
     juce::TextButton loginButton, logoutButton;
     juce::ToggleButton autostartToggle;

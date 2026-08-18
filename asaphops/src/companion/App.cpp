@@ -6,6 +6,21 @@
 
 namespace AsaphOps {
 
+namespace {
+
+juce::String midiToHex (const juce::MidiMessage& message)
+{
+    const auto* data = message.getRawData();
+    const int n = message.getRawDataSize();
+    juce::String hex;
+    hex.preallocateBytes ((size_t) n * 2 + 8);
+    for (int i = 0; i < n; ++i)
+        hex << juce::String::toHexString ((int) data[i]).paddedLeft ('0', 2);
+    return hex;
+}
+
+} // namespace
+
 CompanionApp::~CompanionApp() = default;
 
 void CompanionApp::initialise (const juce::String& commandLine)
@@ -33,8 +48,31 @@ void CompanionApp::initialise (const juce::String& commandLine)
     ops = std::make_unique<OpsClient>();
     media = std::make_unique<MediaEngine> (sessions);
     media->setListenServerUrl (ops->getSettings().serverUrl);
-    mackie = std::make_unique<MackieSurface>();
-    mackie->start();
+    midi = std::make_unique<MidiPassthrough>();
+    midi->addChangeListener (this);
+    ops->addChangeListener (this);
+    midi->start();
+    midi->setIncomingMidiHandler ([this] (int surface, const juce::MidiMessage& message)
+    {
+        if (ops != nullptr)
+            ops->sendLiveLine ("MIDI " + juce::String (surface) + " " + midiToHex (message));
+    });
+    ops->setLiveLineHandler ([this] (juce::String line)
+    {
+        if (midi == nullptr)
+            return;
+        if (line.startsWith ("MIDI "))
+        {
+            auto rest = line.fromFirstOccurrenceOf ("MIDI ", false, false).trim();
+            int surface = 0;
+            if (rest.length() >= 2 && rest[0] >= '0' && rest[0] <= '3' && rest[1] == ' ')
+            {
+                surface = (int) (rest[0] - '0');
+                rest = rest.substring (2).trim();
+            }
+            midi->sendHex (surface, rest);
+        }
+    });
     ipc = std::make_unique<IPCServer> (registry, sessions, *media, secret);
     media->onListenUrl = [this] (const juce::String& url)
     {
@@ -53,10 +91,9 @@ void CompanionApp::initialise (const juce::String& commandLine)
         if (ops->registerEndpoint())
             ops->startLive();
         media->setOpsReady (true);
+        pushPortStatus();
     }
 
-    // JUCE's X11 system-tray dock can crash GNOME/KDE sessions. Keep a normal
-    // window on Linux; tray is macOS/Windows only.
    #if ! JUCE_LINUX
     tray = std::make_unique<TrayIcon> (*this);
     if (! startHidden)
@@ -68,8 +105,13 @@ void CompanionApp::initialise (const juce::String& commandLine)
 
 void CompanionApp::shutdown()
 {
+    if (midi != nullptr)
+        midi->removeChangeListener (this);
+    if (ops != nullptr)
+        ops->removeChangeListener (this);
     if (ops != nullptr)
     {
+        ops->setLiveLineHandler ({});
         if (media != nullptr)
             media->setOpsReady (false);
         ops->stopLive();
@@ -78,15 +120,27 @@ void CompanionApp::shutdown()
     window.reset();
     tray.reset();
     ipc.reset();
-    if (mackie != nullptr)
-        mackie->stop();
-    mackie.reset();
+    if (midi != nullptr)
+        midi->stop();
+    midi.reset();
     media.reset();
     ops.reset();
     juce::Logger::setCurrentLogger (nullptr);
     logger.reset();
     if (instanceLock != nullptr)
         instanceLock->exit();
+}
+
+void CompanionApp::changeListenerCallback (juce::ChangeBroadcaster*)
+{
+    pushPortStatus();
+}
+
+void CompanionApp::pushPortStatus()
+{
+    if (ops == nullptr || midi == nullptr)
+        return;
+    ops->sendLiveLine ("PORT " + midi->portSnapshotJson());
 }
 
 void CompanionApp::showMainWindow()

@@ -48,6 +48,8 @@ juce_add_gui_app(AsaphOpsCompanion
     NEEDS_CURL ${_asaphops_needs_curl}
     HARDENED_RUNTIME_ENABLED FALSE
     DOCUMENT_EXTENSIONS ""
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT "AsaphOps uses audio input for listen streaming."
 )
 
 target_sources(AsaphOpsCompanion PRIVATE
@@ -61,9 +63,8 @@ target_sources(AsaphOpsCompanion PRIVATE
     src/companion/Network/OpsClient.cpp
     src/companion/Network/LiveConnection.cpp
     src/companion/Media/MediaEngine.cpp
-    src/companion/Mackie/MackieSurface.cpp
+    src/companion/Midi/MidiPassthrough.cpp
     src/companion/UI/MainWindow.cpp
-    src/companion/UI/MixerBoard.cpp
     src/companion/UI/TrayIcon.cpp
 )
 

@@ -1,4 +1,4 @@
-name: LiveMixStream CI/CD Build Pipeline
+name: AsaphOps macOS
 
 on:
   workflow_dispatch:
@@ -7,176 +7,85 @@ on:
   pull_request:
     branches: [ main, master ]
 
+concurrency:
+  group: asaphops-macos-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+
 jobs:
-  test-server:
-    name: Server Unit Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-      - run: npm ci
-      - run: npm test
-
-  build-plugin:
-    name: Build Plugin (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+  macos:
+    name: Companion + plugin (macOS universal)
+    runs-on: macos-latest
+    timeout-minutes: 90
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v5
-        with:
-          submodules: recursive
 
-      - name: Linux Dependencies
-        if: runner.os == 'Linux'
+      - name: Install ninja, opus, pkg-config
         run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build libasound2-dev libjack-jackd2-dev \
-            ladspa-sdk freeglut3-dev g++ libx11-dev libxcomposite-dev \
-            libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
-            libfreetype-dev libwebkit2gtk-4.1-dev libglu1-mesa-dev \
-            libcurl4-openssl-dev libopus-dev pkg-config
-
-      - name: macOS Dependencies
-        if: runner.os == 'macOS'
-        run: |
-          brew install cmake ninja opus pkg-config || true
+          brew install ninja opus pkg-config
           echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig:$(brew --prefix opus)/lib/pkgconfig" >> "$GITHUB_ENV"
           echo "LIBRARY_PATH=$(brew --prefix)/lib:$(brew --prefix opus)/lib" >> "$GITHUB_ENV"
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build Plugin Artifacts
-        run: cmake --build build --config Release
-
-      - name: Run Gain Ramp Test
-        if: runner.os != 'Windows'
+        working-directory: asaphops
         run: |
-          cmake --build build --target lms_gain_ramp_test --config Release
-          ./build/lms_gain_ramp_test || ./build/Release/lms_gain_ramp_test
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DASAPHOPS_COPY_PLUGIN=OFF \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=- \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=
 
-      - name: Upload Windows VST3 Artifact
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: LiveMixStream-Windows-VST3
-          path: build/LiveMixStream_artefacts/Release/VST3/LiveMixStream.vst3
+      - name: Build companion, VST3, AU
+        working-directory: asaphops
+        run: cmake --build build --target AsaphOpsCompanion AsaphOpsPlugin_VST3 AsaphOpsPlugin_AU
 
-      - name: Upload macOS VST3 & AU Artifacts
-        if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: LiveMixStream-macOS-Plugins
-          path: |
-            build/LiveMixStream_artefacts/Release/VST3/LiveMixStream.vst3
-            build/LiveMixStream_artefacts/Release/AU/LiveMixStream.component
-
-      - name: Upload Linux VST3 Artifact
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: LiveMixStream-Linux-VST3
-          path: build/LiveMixStream_artefacts/Release/VST3/LiveMixStream.vst3
-
-  build-asaphops-companion:
-    name: Build AsaphOps Companion (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v5
-
-      - name: Linux Dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build libasound2-dev libjack-jackd2-dev \
-            ladspa-sdk freeglut3-dev g++ libx11-dev libxcomposite-dev \
-            libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
-            libfreetype-dev libwebkit2gtk-4.1-dev libglu1-mesa-dev \
-            libcurl4-openssl-dev pkg-config
-
-      - name: macOS Dependencies
-        if: runner.os == 'macOS'
-        run: |
-          brew install cmake ninja opus pkg-config || true
-          echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig:$(brew --prefix opus)/lib/pkgconfig" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=$(brew --prefix)/lib:$(brew --prefix opus)/lib" >> "$GITHUB_ENV"
-
-      - name: Configure AsaphOps CMake
-        shell: bash
-        run: |
-          extra=()
-          if [[ "${{ runner.os }}" == "macOS" ]]; then
-            extra+=(
-              -G Ninja
-              -DCMAKE_OSX_ARCHITECTURES=arm64\;x86_64
-              -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
-              -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=-
-              -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=
-            )
-          fi
-          cmake -S asaphops -B asaphops/build -DCMAKE_BUILD_TYPE=Release "${extra[@]}"
-
-      - name: Build Companion and Plugin
-        run: cmake --build asaphops/build --config Release --target AsaphOpsCompanion AsaphOpsPlugin_VST3 ${{ runner.os == 'macOS' && 'AsaphOpsPlugin_AU' || '' }}
-
-      - name: Package macOS VST3
-        if: runner.os == 'macOS'
+      - name: Ad-hoc sign and zip
         run: |
           set -euo pipefail
-          VST3="asaphops/build/AsaphOpsPlugin_artefacts/Release/VST3/AsaphOps.vst3"
-          AU="asaphops/build/AsaphOpsPlugin_artefacts/Release/AU/AsaphOps.component"
-          APP="asaphops/build/AsaphOpsCompanion_artefacts/Release/AsaphOps.app"
-          test -d "$VST3"
+          find_bundle() {
+            local name="$1"
+            local found
+            found="$(find asaphops/build -type d -name "$name" | head -n 1 || true)"
+            if [[ -z "$found" || ! -d "$found" ]]; then
+              echo "Missing bundle: $name"
+              find asaphops/build -maxdepth 5 \( -name '*.app' -o -name '*.vst3' -o -name '*.component' \) -print || true
+              exit 1
+            fi
+            echo "$found"
+          }
+
+          APP="$(find_bundle AsaphOps.app)"
+          VST3="$(find_bundle AsaphOps.vst3)"
+          AU="$(find_bundle AsaphOps.component)"
+
+          adhoc() {
+            codesign --force --deep --sign - --timestamp=none "$1"
+            codesign --verify --verbose=2 "$1" || true
+          }
+          adhoc "$APP"
+          adhoc "$VST3"
+          adhoc "$AU"
+
           mkdir -p dist-mac
-          codesign --force --deep --sign - --timestamp=none "$VST3"
+          ditto -c -k --keepParent "$APP" dist-mac/AsaphOps-macOS-Companion.zip
           ditto -c -k --keepParent "$VST3" dist-mac/AsaphOps-macOS-VST3.zip
-          if [[ -d "$AU" ]]; then
-            codesign --force --deep --sign - --timestamp=none "$AU"
-            ditto -c -k --keepParent "$AU" dist-mac/AsaphOps-macOS-AU.zip
-          fi
-          if [[ -d "$APP" ]]; then
-            codesign --force --deep --sign - --timestamp=none "$APP"
-            ditto -c -k --keepParent "$APP" dist-mac/AsaphOps-macOS-Companion.zip
-          fi
-          ls -la dist-mac
+          ditto -c -k --keepParent "$AU" dist-mac/AsaphOps-macOS-AU.zip
 
-      - name: Upload Windows Artifacts
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: AsaphOps-Windows
-          path: |
-            asaphops/build/AsaphOpsCompanion_artefacts/Release/AsaphOps.exe
-            asaphops/build/AsaphOpsPlugin_artefacts/Release/VST3/AsaphOps.vst3
-          if-no-files-found: error
+          cp asaphops/scripts/macos-ci-install.txt dist-mac/INSTALL.txt
+          ls -lah dist-mac
 
-      - name: Upload macOS Artifacts
-        if: runner.os == 'macOS'
+      - name: Upload AsaphOps-macOS
         uses: actions/upload-artifact@v4
         with:
           name: AsaphOps-macOS
-          path: dist-mac/*.zip
+          path: dist-mac/*
           if-no-files-found: error
-
-      - name: Upload Linux Artifacts
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: AsaphOps-Linux
-          path: |
-            asaphops/build/AsaphOpsCompanion_artefacts/Release/AsaphOps
-            asaphops/build/AsaphOpsPlugin_artefacts/Release/VST3/AsaphOps.vst3
-          if-no-files-found: warn
+          retention-days: 30
